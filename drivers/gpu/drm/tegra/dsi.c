@@ -544,35 +544,76 @@ static void tegra_dsi_configure(struct tegra_dsi *dsi, unsigned int pipe,
 		tegra_dsi_writel(dsi, pkt_seq[i], DSI_PKT_SEQ_0_LO + i);
 
 	if (dsi->flags & MIPI_DSI_MODE_VIDEO) {
-		/* horizontal active pixels */
-		hact = mode->hdisplay * mul / div;
+		if (dsi->master || dsi->slave) {
+			/* Ganged mode */
+			unsigned long delay, bclk, bclk_ganged;
+			unsigned int lanes = state->lanes;
+			
+			/* horizontal active pixels */
+			hact = (mode->hdisplay / 2) * mul / div;
+			
+			/* horizontal sync width */
+			hsw = ((mode->hsync_end - mode->hsync_start) / 2) * mul / div;
 
-		/* horizontal sync width */
-		hsw = (mode->hsync_end - mode->hsync_start) * mul / div;
+			/* horizontal back porch */
+			hbp = ((mode->htotal - mode->hsync_end) / 2) * mul / div;
 
-		/* horizontal back porch */
-		hbp = (mode->htotal - mode->hsync_end) * mul / div;
+			if ((dsi->flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) == 0)
+				hbp += hsw;
 
-		if ((dsi->flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) == 0)
-			hbp += hsw;
+			/* horizontal front porch */
+			hfp = ((mode->hsync_start - mode->hdisplay) / 2) * mul / div;
+				
+			/* subtract packet overhead */
+			hsw -= 10;
+			hbp -= 14;
+			hfp -= 8;
+			
+			tegra_dsi_writel(dsi, hsw << 16 | 0, DSI_PKT_LEN_0_1);
+			tegra_dsi_writel(dsi, hact << 16 | hbp, DSI_PKT_LEN_2_3);
+			tegra_dsi_writel(dsi, 0 << 16 | hfp, DSI_PKT_LEN_4_5);
+			tegra_dsi_writel(dsi, 0x0f0f << 16 | 0, DSI_PKT_LEN_6_7);
 
-		/* horizontal front porch */
-		hfp = (mode->hsync_start - mode->hdisplay) * mul / div;
+			/* SOL to valid, valid to FIFO and FIFO write delay */
+			delay = 4 + 4 + 2;
+			delay = DIV_ROUND_UP(delay * mul, div * lanes);
+			/* FIFO read delay */
+			delay = delay + 6;
 
-		/* subtract packet overhead */
-		hsw -= 10;
-		hbp -= 14;
-		hfp -= 8;
+			bclk = DIV_ROUND_UP(mode->htotal * mul, div * lanes);
+			bclk_ganged = DIV_ROUND_UP(bclk * lanes / 2, lanes);
+			value = bclk - bclk_ganged + delay + 20;
 
-		tegra_dsi_writel(dsi, hsw << 16 | 0, DSI_PKT_LEN_0_1);
-		tegra_dsi_writel(dsi, hact << 16 | hbp, DSI_PKT_LEN_2_3);
-		tegra_dsi_writel(dsi, hfp, DSI_PKT_LEN_4_5);
-		tegra_dsi_writel(dsi, 0x0f0f << 16, DSI_PKT_LEN_6_7);
+			tegra_dsi_writel(dsi, value, DSI_SOL_DELAY);
+		} else {
+			/* horizontal active pixels */
+			hact = mode->hdisplay * mul / div;
 
-		/* set SOL delay (for non-burst mode only) */
-		tegra_dsi_writel(dsi, 8 * mul / div, DSI_SOL_DELAY);
+			/* horizontal sync width */
+			hsw = (mode->hsync_end - mode->hsync_start) * mul / div;
 
-		/* TODO: implement ganged mode */
+			/* horizontal back porch */
+			hbp = (mode->htotal - mode->hsync_end) * mul / div;
+
+			if ((dsi->flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) == 0)
+				hbp += hsw;
+
+			/* horizontal front porch */
+			hfp = (mode->hsync_start - mode->hdisplay) * mul / div;
+
+			/* subtract packet overhead */
+			hsw -= 10;
+			hbp -= 14;
+			hfp -= 8;
+
+			tegra_dsi_writel(dsi, hsw << 16 | 0, DSI_PKT_LEN_0_1);
+			tegra_dsi_writel(dsi, hact << 16 | hbp, DSI_PKT_LEN_2_3);
+			tegra_dsi_writel(dsi, hfp, DSI_PKT_LEN_4_5);
+			tegra_dsi_writel(dsi, 0x0f0f << 16, DSI_PKT_LEN_6_7);
+
+			/* set SOL delay (for non-burst mode only) */
+			tegra_dsi_writel(dsi, 8 * mul / div, DSI_SOL_DELAY);
+		}
 	} else {
 		u16 bytes;
 
