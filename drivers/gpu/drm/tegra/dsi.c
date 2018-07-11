@@ -665,8 +665,12 @@ static void tegra_dsi_configure(struct tegra_dsi *dsi, unsigned int pipe,
 		 * TODO: Support modes other than symmetrical left-right
 		 * split.
 		 */
-		tegra_dsi_ganged_enable(dsi, 0, mode->hdisplay / 2);
-		tegra_dsi_ganged_enable(dsi->slave, mode->hdisplay / 2,
+
+		/* I switch dsi links here
+		 * TODO: no hardcode
+		 */
+		tegra_dsi_ganged_enable(dsi, mode->hdisplay / 2, mode->hdisplay / 2);
+		tegra_dsi_ganged_enable(dsi->slave, 0,
 					mode->hdisplay / 2);
 	}
 }
