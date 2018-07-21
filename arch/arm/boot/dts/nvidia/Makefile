@@ -8,6 +8,7 @@ dtb-$(CONFIG_ARCH_TEGRA_124_SOC) += \
 	tegra124-apalis-eval.dtb \
 	tegra124-apalis-v1.2-eval.dtb \
 	tegra124-jetson-tk1.dtb \
+	tegra124-mocha.dtb \
 	tegra124-nyan-big.dtb \
 	tegra124-nyan-big-fhd.dtb \
 	tegra124-nyan-blaze.dtb \
