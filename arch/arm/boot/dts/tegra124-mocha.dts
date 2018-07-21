@@ -1,0 +1,155 @@
+/*
+ * arch/arm/boot/dts/tegra124-mocha.dts
+ *
+ * Copyright (c) 2018, Alexandrov Dmirty.  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+/dts-v1/;
+
+#include "tegra124.dtsi"
+#include "tegra124-mocha-emc.dtsi"
+#include "tegra124-mocha-keys.dtsi"
+#include "tegra124-mocha-pinmux.dtsi"
+#include "tegra124-mocha-sdhci.dtsi"
+#include "tegra124-mocha-pmic.dtsi"
+#include "tegra124-mocha-fixed.dtsi"
+#include "tegra124-mocha-i2c.dtsi"
+
+/ {
+	model = "NVIDIA Tegra124 MOCHA";
+	compatible = "nvidia,mocha", "nvidia,tegra124";
+	nvidia,boardids = "1780:1100:3:A:7","1845:1000:0:A:7";
+
+	aliases {
+		rtc0 = "/i2c@0,7000d000/pmic@58";
+		rtc1 = "/rtc@0,7000e000";
+	};
+
+	memory {
+		reg = <0x0 0x80000000 0x0 0x80000000>;
+	};
+
+	chosen {
+		bootargs = "cros_legacy init=/init rw fbcon loglevel=0 debug earlyprintk drm.atomic=1 no_console_suspend";
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+	
+		pstore: pstore {
+			reg = <0 0xfd400000 0 0x200000>;
+			compatible = "ramoops";
+			record-size = <0x10000>;
+			console-size = <0x80000>;
+			pmsg-size = <0x40000>;
+			ftrace-size = <0x80000>;
+			rtrace-size = <0x80000>;
+			no-map;
+			status = "okay";
+		};
+	};
+
+	psci {
+		compatible = "arm,psci-0.2";
+		method = "smc";
+	};
+
+	pwm@7000a000 {
+		status = "okay";
+	};
+
+	gpu@0,57000000 {
+		vdd-supply = <&vdd_gpu>;
+		status = "okay";
+	};
+
+	/* CPU DFLL clock */
+	clock@70110000 {
+		status = "okay";
+		vdd-cpu-supply = <&vdd_cpu>;
+		nvidia,i2c-fs-rate = <400000>;
+	};
+
+	clocks {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		clk32k_in: clock@0 {
+			compatible = "fixed-clock";
+			reg = <0>;
+			#clock-cells = <0>;
+			clock-frequency = <32768>;
+		};
+	};
+
+	mipi: mipi@700e3000 {
+		status = "okay";
+	}
+
+	cpus {
+		cpu@0 {
+			vdd-cpu-supply = <&vdd_cpu>;
+			enable-method = "psci";
+		};
+
+		cpu@1 {
+			enable-method = "psci";
+		};
+
+		cpu@2 {
+			enable-method = "psci";
+		};
+
+		cpu@3 {
+			enable-method = "psci";
+		};
+	};
+	
+	thermal-zones {
+		cpu {
+			trips {
+				cpu-shutdown-trip {
+					temperature = <101000>;
+					hysteresis = <0>;
+					type = "critical";
+				};
+			};
+		};
+
+		mem {
+			trips {
+				mem-shutdown-trip {
+					temperature = <101000>;
+					hysteresis = <0>;
+					type = "critical";
+				};
+			};
+		};
+
+		gpu {
+			trips {
+				gpu-shutdown-trip {
+					temperature = <101000>;
+					hysteresis = <0>;
+					type = "critical";
+				};
+			};
+		};
+	};
+};
