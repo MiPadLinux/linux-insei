@@ -27,6 +27,7 @@
 #include "tegra124-mocha-pmic.dtsi"
 #include "tegra124-mocha-fixed.dtsi"
 #include "tegra124-mocha-i2c.dtsi"
+#include "tegra124-mocha-display.dtsi"
 
 / {
 	model = "NVIDIA Tegra124 MOCHA";
@@ -100,7 +101,7 @@
 
 	mipi: mipi@700e3000 {
 		status = "okay";
-	}
+	};
 
 	cpus {
 		cpu@0 {
