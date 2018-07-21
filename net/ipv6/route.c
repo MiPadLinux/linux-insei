@@ -3815,7 +3815,7 @@ static struct fib6_info *rt6_multipath_first_sibling(const struct fib6_info *rt)
 			lockdep_is_held(&rt->fib6_table->tb6_lock));
 	while (iter) {
 		if (iter->fib6_metric == rt->fib6_metric &&
-		    iter->fib6_nsiblings)
+		    rt6_qualify_for_ecmp(iter))
 			return iter;
 		iter = rcu_dereference_protected(iter->fib6_next,
 				lockdep_is_held(&rt->fib6_table->tb6_lock));
@@ -4361,6 +4361,13 @@ static int ip6_route_multipath_add(struct fib6_config *cfg,
 			rt = NULL;
 			goto cleanup;
 		}
+		if (!rt6_qualify_for_ecmp(rt)) {
+			err = -EINVAL;
+			NL_SET_ERR_MSG(extack,
+				       "Device only routes can not be added for IPv6 using the multipath API.");
+			fib6_info_release(rt);
+			goto cleanup;
+		}
 
 		rt->fib6_nh.nh_weight = rtnh->rtnh_hops + 1;
 
@@ -4412,7 +4419,6 @@ static int ip6_route_multipath_add(struct fib6_config *cfg,
 		 */
 		cfg->fc_nlinfo.nlh->nlmsg_flags &= ~(NLM_F_EXCL |
 						     NLM_F_REPLACE);
-		cfg->fc_nlinfo.nlh->nlmsg_flags |= NLM_F_APPEND;
 		nhn++;
 	}
 
