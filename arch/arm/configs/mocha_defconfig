@@ -313,7 +313,7 @@ CONFIG_DYNAMIC_DEBUG=y
 # Firmware
 CONFIG_FIRMWARE_IN_KERNEL=y
 CONFIG_EXTRA_FIRMWARE="nvidia/tegra124/xusb.bin nvidia/tegra124/vic.bin nvidia/gk20a/fecs_data.bin nvidia/gk20a/fecs_inst.bin nvidia/gk20a/gpccs_data.bin nvidia/gk20a/gpccs_inst.bin nvidia/gk20a/sw_bundle_init.bin nvidia/gk20a/sw_method_init.bin nvidia/gk20a/sw_ctx.bin nvidia/gk20a/sw_nonctx.bin brcm/brcmfmac4354-sdio.bin brcm/brcmfmac4354-sdio.txt"
-CONFIG_EXTRA_FIRMWARE_DIR="firmware"
+CONFIG_EXTRA_FIRMWARE_DIR="lib/firmware"
 
 # PSCI
 CONFIG_ARM_PSCI=y
