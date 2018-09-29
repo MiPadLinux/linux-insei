@@ -28,46 +28,23 @@
 		bq2419x: bq2419x@6b {
 			compatible = "ti,bq2419x";
 			interrupt-parent = <&gpio>;
-			interrupts = <72 0x0>;
+			interrupts = <72 IRQ_TYPE_LEVEL_HIGH>;
+			ti,watchdog-timeout = <40>;
+            ti,maximum-in-voltage-limit = <4200>;
+            ti,fast-charge-current-limit = <2500>;
 			reg = <0x6b>;
 
 
 			battery_charger: charger {
-				regulator-name = "batt_regulator";
+				regulator-name = "charger";
 				regulator-max-microamp = <2000000>;
-				ti,watchdog-timeout = <0>;
-				rtc-alarm-time = <3600>;
-				ti,auto-recharge-time = <60>;
-				ti,input-voltage-limit-millivolt = <4300>;
-				ti,fast-charge-current-limit-milliamp = <2500>;
-				ti,pre-charge-current-limit-milliamp = <256>;
-				ti,charge-term-current-limit-milliamp = <400>;
-				ti,ir-comp-resister-ohm = <10>;
-				ti,ir-comp-voltage-millivolt = <32>;
-				ti,thermal-regulation-threshold-degc = <100>;
-				ti,charge-voltage-limit-millivolt = <4350>;
-				ti,disbale-suspend-during-charging;
-				consumers {
-					c1 {
-						regulator-consumer-supply = "usb_bat_chg";
-						regulator-consumer-device = "tegra-udc.0";
-					};
-				};
+				regulator-min-microamp = <100000>;
 			};
 
 			usb0_vbus_reg: vbus {
-				regulator-name = "vbus_regulator";
-				consumers {
-					c1 {
-						regulator-consumer-supply = "usb_vbus";
-						regulator-consumer-device = "tegra-ehci.0";
-					};
-
-					c2 {
-						regulator-consumer-supply = "usb_vbus";
-						regulator-consumer-device = "tegra-otg";
-					};
-				};
+				regulator-name = "vbus";
+				regulator-min-microvolt = <0>;
+                regulator-max-microvolt = <5000000>;
 			};
 		};
 	};
