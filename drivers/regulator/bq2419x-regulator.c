@@ -36,6 +36,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of.h>
 #include <linux/slab.h>
+#include <linux/power_supply.h>
 
 /* Register definitions */
 #define BQ2419X_INPUT_SRC_REG                  0x00
@@ -92,6 +93,8 @@
 #define BQ2419x_FAULT_CHRG_THERMAL             0x20
 #define BQ2419x_FAULT_CHRG_SAFTY               0x30
 #define BQ2419x_FAULT_NTC_FAULT                        0x07
+
+extern int tps6591x_gpio7_enable(bool enable);
 
 /* Input current limit */
 static const unsigned int bq2419x_charging_current[] = {
@@ -311,6 +314,12 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 
        if (max_uA == 0 && val != 0)
                return ret;
+
+       if (max_uA > 0)
+               tps6591x_gpio7_enable(0);
+       else
+               tps6591x_gpio7_enable(1);
+
 
        ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
        if (ret < 0) {
