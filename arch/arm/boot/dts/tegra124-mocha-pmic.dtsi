@@ -21,9 +21,23 @@
  #include <dt-bindings/gpio/tegra-gpio.h>
 
 / {
+	bat: battery {
+		compatible = "simple-battery";
+		voltage-min-design-microvolt = <3800000>;
+		energy-full-design-microwatt-hours = <6520000>;
+		charge-full-design-microamp-hours = <24780000>;
+	};
+
 	i2c@7000c400 {
 		status = "okay";
 		clock-frequency = <400000>;
+
+		bq27520@55 {
+			compatible = "ti,bq27520g4";
+			reg = <0x55>;
+
+			monitored-battery = <&bat>;
+		};
 
 		bq2419x: bq2419x@6b {
 			compatible = "ti,bq2419x";
