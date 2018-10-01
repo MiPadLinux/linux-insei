@@ -216,7 +216,6 @@ ifneq ($(CONFIG_BCMDHD_SDIO),)
   DHDCFLAGS += -DBDC -DDHD_BCMEVENTS -DMMC_SDIO_ABORT
   DHDCFLAGS += -DBCMSDIO -DBCMLXSDMMC -DUSE_SDIOFIFO_IOVAR
   DHDCFLAGS += -DPROP_TXSTATUS
-  DHDCFLAGS += -DQMONITOR
 endif
 
 ifeq ($(CONFIG_BCMDHD_HW_OOB),y)
@@ -225,12 +224,15 @@ else
   DHDCFLAGS += -DSDIO_ISR_THREAD
 endif
 
+ifeq ($(CONFIG_BCMDHD_QMONITOR),y)
+  DHDCFLAGS += -DQMONITOR
+endif
 #EXTRA_LDFLAGS += --strip-debug
 
-EXTRA_CFLAGS += -Wno-date-time
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG
 EXTRA_CFLAGS += -DSRCBASE=\"$(src)\"
 EXTRA_CFLAGS += -I$(src)/include/ -I$(src)/
+KBUILD_CFLAGS += -I$(srctree)/drivers/mmc
 KBUILD_CFLAGS += -I$(LINUXDIR)/include -I$(shell pwd)
 
 DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
@@ -238,16 +240,15 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
 	bcmutils.o bcmwifi_channels.o hndpmu.o linux_osl.o sbutils.o siutils.o \
 	wl_android.o wl_cfg80211.o wl_cfgp2p.o wl_cfg_btcoex.o wldev_common.o wl_linux_mon.o  \
 	dhd_linux_platdev.o dhd_pno.o dhd_linux_wq.o wl_cfg_btcoex.o \
-	hnd_pktq.o hnd_pktpool.o wl_cfgvendor.o
+	hnd_pktq.o hnd_pktpool.o wl_cfgvendor.o dhd_custom_tegra.o
 
 ifneq ($(CONFIG_BCMDHD_SDIO),)
   DHDOFILES += bcmsdh.o bcmsdh_linux.o bcmsdh_sdmmc.o bcmsdh_sdmmc_linux.o
-  DHDOFILES += dhd_cdc.o dhd_wlfc.o dhd_sdio.o dhd_qmon.o
+  DHDOFILES += dhd_cdc.o dhd_wlfc.o dhd_sdio.o
 endif
 
 ifneq ($(CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA),)
   DHDOFILES += dhd_custom_sysfs_tegra.o
-  DHDOFILES += dhd_custom_sysfs_tegra_ping.o
   DHDOFILES += dhd_custom_sysfs_tegra_rssi.o
   DHDOFILES += dhd_custom_sysfs_tegra_scan.o
   DHDOFILES += dhd_custom_sysfs_tegra_stat.o
@@ -257,6 +258,10 @@ endif
 
 ifneq ($(CONFIG_BCMDHD_CUSTOM_NET_PERF_TEGRA),)
   DHDOFILES += dhd_custom_net_perf_tegra.o
+endif
+
+ifeq ($(CONFIG_BCMDHD_QMONITOR),y)
+  DHDOFILES += dhd_qmon.o
 endif
 
 bcmdhd-objs := $(DHDOFILES)

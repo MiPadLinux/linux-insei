@@ -40,10 +40,7 @@
 #ifdef DHD_WMF
 #include <dhd_wmf_linux.h>
 #endif
-/* Linux wireless extension support */
-#if defined(WL_WIRELESS_EXT)
-#include <wl_iw.h>
-#endif /* defined(WL_WIRELESS_EXT) */
+
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND)
 #include <linux/earlysuspend.h>
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND) */
@@ -52,13 +49,15 @@
 
 typedef struct wifi_adapter_info {
 	const char	*name;
-	uint		irq_num;
+	int		irq_num;
 	uint		intr_flags;
 	int             wlan_pwr;
 	int             wlan_rst;
+	int             pwr_retry_cnt;
 	const char	*edp_name;
 	const char	*fw_path;
 	const char	*nv_path;
+	struct device_node *sdhci_host;
 	void		*wifi_plat_data;	/* wifi ctrl func, for backward compatibility */
 	uint		bus_type;
 	uint		bus_num;
@@ -68,7 +67,6 @@ typedef struct wifi_adapter_info {
 	int		n_country;
 	struct cntry_locales_custom *country_code_map;
 #endif
-	bool skip_hang_evt;
 } wifi_adapter_info_t;
 
 typedef struct bcmdhd_wifi_platdata {

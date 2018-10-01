@@ -57,14 +57,6 @@ config BCMDHD_HW_OOB
 	---help---
 	  Use out of band interrupt for card interrupt and wake on wireless.
 
-config BCMDHD_WEXT
-	bool "Enable WEXT support"
-	depends on BCMDHD && CFG80211 = n
-	select WIRELESS_EXT
-	select WEXT_PRIV
-	help
-	  Enables WEXT support
-
 config DHD_USE_STATIC_BUF
 	bool "Enable memory preallocation"
 	depends on BCMDHD
@@ -88,7 +80,7 @@ config BCMDHD_DISABLE_MCC
 config BCMDHD_CUSTOM_SYSFS_TEGRA
 	bool "Custom sysfs for Tegra platform"
 	depends on BCMDHD
-	default y
+	default n
 	---help---
 	  Enable custom sysfs for Tegra platform.
 
@@ -100,3 +92,15 @@ config BCMDHD_CUSTOM_NET_PERF_TEGRA
 	  Enable custom network performance boost for Tegra platform.
 	  Dynamically boosts clock frequencies based on network traffic
 	  requirements.
+
+config BCMDHD_QMONITOR
+	bool "Monitoring the DHD queue utilization"
+	depends on BCMDHD
+	---help---
+	  The feature allows monitoring the DHD queue utilization
+	  to get the percentage of a time period where the number of
+	  pending packets is above a configurable theshold.
+	  Based on IOVAR "qtime_percent" results, the server indicates
+	  to the Video Encoder if its bitrate can be increased or
+	  must be decreased. Currently, this works only with P2P interfaces
+	  and with PROP_TXSTATUS.

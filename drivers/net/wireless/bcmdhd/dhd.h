@@ -5,6 +5,7 @@
  * DHD OS, bus, and protocol modules.
  *
  * Copyright (C) 1999-2015, Broadcom Corporation
+ * Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -45,9 +46,6 @@
 #include <linux/ethtool.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_HAS_WAKELOCK)
-#include <linux/wakelock.h>
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined (CONFIG_HAS_WAKELOCK) */
 /* The kernel threading is sdio-specific */
 struct task_struct;
 struct sched_param;
@@ -121,8 +119,9 @@ enum dhd_op_flags {
 #define DHD_SCAN_UNASSOC_ACTIVE_TIME 65 /* ms: Embedded def. Unassoc Active setting from DHD */
 #define DHD_SCAN_PASSIVE_TIME		130 /* ms: Embedded default Passive setting from DHD */
 
+/* Controlling number of retries from DT */
 #ifndef POWERUP_MAX_RETRY
-#define POWERUP_MAX_RETRY	3 /* how many times we retry to power up the chip */
+#define POWERUP_MAX_RETRY	0 /* how many times we retry to power up the chip */
 #endif
 #ifndef POWERUP_WAIT_MS
 #define POWERUP_WAIT_MS		2000 /* ms: time out in waiting wifi to come up */
@@ -771,7 +770,7 @@ extern int dhd_bus_suspend(dhd_pub_t *dhdpub);
 extern int dhd_bus_resume(dhd_pub_t *dhdpub, int stage);
 extern int dhd_bus_membytes(dhd_pub_t *dhdp, bool set, uint32 address, uint8 *data, uint size);
 extern void dhd_print_buf(void *pbuf, int len, int bytes_per_line);
-extern bool dhd_is_associated(dhd_pub_t *dhd, void *bss_buf, int *retval);
+extern bool dhd_is_associated(dhd_pub_t *dhd, uint8 ifidx, int *retval);
 #if defined(BCMSDIO) || defined(BCMPCIE)
 extern uint dhd_bus_chip_id(dhd_pub_t *dhdp);
 extern uint dhd_bus_chiprev_id(dhd_pub_t *dhdp);

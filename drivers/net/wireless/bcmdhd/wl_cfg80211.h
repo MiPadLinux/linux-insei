@@ -2,6 +2,7 @@
  * Linux cfg80211 driver
  *
  * Copyright (C) 1999-2015, Broadcom Corporation
+ * Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -75,6 +76,8 @@ struct wl_ibss;
 
 #define PM_BLOCK 1
 #define PM_ENABLE 0
+
+#define DISCONNECT_WAIT_TIME 250
 
 #if defined(DHD_DEBUG)
 #define	WL_ERR(args)									\
@@ -398,7 +401,7 @@ struct wl_pmk_list {
 };
 
 
-#define ESCAN_BUF_SIZE (64 * 1024)
+#define ESCAN_BUF_SIZE (3 * 64 * 1024)
 
 struct escan_info {
 	u32 escan_state;
@@ -571,6 +574,7 @@ struct bcm_cfg80211 {
 	wait_queue_head_t netif_change_event;
 	wl_if_event_info if_event_info;
 	struct completion send_af_done;
+	struct completion send_disconnected;
 	struct afx_hdl *afx_hdl;
 	struct ap_info *ap_info;
 	struct sta_info *sta_info;
@@ -634,6 +638,15 @@ struct bcm_cfg80211 {
 #endif /* QOS_MAP_SET */
 	struct ether_addr last_roamed_addr;
 };
+
+struct fw_assoc_timeout_work {
+	struct delayed_work delay_work;
+	struct net_device *dev;
+	struct bcm_cfg80211 *cfg;
+	bool fw_assoc_watchdog_started;
+};
+void wl_fw_assoc_timeout_init(void);
+void wl_fw_assoc_timeout_cancel(void);
 
 
 static inline struct wl_bss_info *next_bss(struct wl_scan_results *list, struct wl_bss_info *bss)
@@ -1011,6 +1024,7 @@ extern s32 wl_cfg80211_apply_eventbuffer(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, wl_eventmsg_buf_t *ev);
 extern void get_primary_mac(struct bcm_cfg80211 *cfg, struct ether_addr *mac);
 extern void wl_cfg80211_update_power_mode(struct net_device *dev);
+extern struct bcm_cfg80211 *wl_get_cfg(struct net_device *ndev);
 #define SCAN_BUF_CNT	2
 #define SCAN_BUF_NEXT	1
 #define WL_SCANTYPE_LEGACY	0x1

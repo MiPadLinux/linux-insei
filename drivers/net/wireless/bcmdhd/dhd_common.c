@@ -2,13 +2,14 @@
  * Broadcom Dongle Host Driver (DHD), common DHD core.
  *
  * Copyright (C) 1999-2015, Broadcom Corporation
+ * Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2 (the "GPL"),
  * available at http://www.broadcom.com/licenses/GPLv2.php, with the
  * following added to such license:
- * 
+ *
  *      As a special exception, the copyright holders of this software give you
  * permission to link this software with independent modules, and to copy and
  * distribute the resulting executable under terms of your choice, provided that
@@ -16,7 +17,7 @@
  * the license of that module.  An independent module is a module which is not
  * derived from this software.  The special exception does not apply to any
  * modifications of the software.
- * 
+ *
  *      Notwithstanding the above, under no circumstances may you combine this
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
@@ -80,7 +81,6 @@ extern void htsf_update(struct dhd_info *dhd, void *data);
 int dhd_msg_level = DHD_ERROR_VAL;
 
 
-#include <wl_iw.h>
 #include "dhd_custom_sysfs_tegra.h"
 
 #ifdef SOFTAP
@@ -117,12 +117,7 @@ bool ap_fw_loaded = FALSE;
 #define DHD_COMPILED "\nCompiled in " SRCBASE
 #endif /* DHD_DEBUG */
 
-#if defined(DHD_DEBUG)
-const char dhd_version[] = "Dongle Host Driver, version " EPI_VERSION_STR
-	DHD_COMPILED " on " __DATE__ " at " __TIME__;
-#else
 const char dhd_version[] = "\nDongle Host Driver, version " EPI_VERSION_STR "\nCompiled from ";
-#endif 
 
 void dhd_set_timer(void *bus, uint wdtick);
 
@@ -2537,7 +2532,7 @@ dhd_sendup_event_common(dhd_pub_t *dhdp, wl_event_msg_t *event, void *data)
 /*
  * returns = TRUE if associated, FALSE if not associated
  */
-bool dhd_is_associated(dhd_pub_t *dhd, void *bss_buf, int *retval)
+bool dhd_is_associated(dhd_pub_t *dhd, uint8 ifidx, int *retval)
 {
 	char bssid[6], zbuf[6];
 	int ret = -1;
@@ -2545,7 +2540,8 @@ bool dhd_is_associated(dhd_pub_t *dhd, void *bss_buf, int *retval)
 	bzero(bssid, 6);
 	bzero(zbuf, 6);
 
-	ret  = dhd_wl_ioctl_cmd(dhd, WLC_GET_BSSID, (char *)&bssid, ETHER_ADDR_LEN, FALSE, 0);
+	ret  = dhd_wl_ioctl_cmd(dhd, WLC_GET_BSSID, (char *)&bssid,
+				ETHER_ADDR_LEN, FALSE, ifidx);
 	DHD_TRACE((" %s WLC_GET_BSSID ioctl res = %d\n", __FUNCTION__, ret));
 
 	if (ret == BCME_NOTASSOCIATED) {
@@ -2558,18 +2554,11 @@ bool dhd_is_associated(dhd_pub_t *dhd, void *bss_buf, int *retval)
 	if (ret < 0)
 		return FALSE;
 
-	if ((memcmp(bssid, zbuf, ETHER_ADDR_LEN) != 0)) {
-		/*  STA is assocoated BSSID is non zero */
-
-		if (bss_buf) {
-			/* return bss if caller provided buf */
-			memcpy(bss_buf, bssid, ETHER_ADDR_LEN);
-		}
-		return TRUE;
-	} else {
+	if ((memcmp(bssid, zbuf, ETHER_ADDR_LEN) == 0)) {
 		DHD_TRACE(("%s: WLC_GET_BSSID ioctl returned zero bssid\n", __FUNCTION__));
 		return FALSE;
 	}
+	return TRUE;
 }
 
 /* Function to estimate possible DTIM_SKIP value */
@@ -2582,7 +2571,7 @@ dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd)
 	int ap_beacon = 0;
 	int allowed_skip_dtim_cnt = 0;
 	/* Check if associated */
-	if (dhd_is_associated(dhd, NULL, NULL) == FALSE) {
+	if (dhd_is_associated(dhd, 0, NULL) == FALSE) {
 		DHD_TRACE(("%s NOT assoc ret %d\n", __FUNCTION__, ret));
 		goto exit;
 	}
@@ -2691,252 +2680,3 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 #endif /* defined(KEEP_ALIVE) */
 /* Android ComboSCAN support */
 
-/*
- *  data parsing from ComboScan tlv list
-*/
-int
-wl_iw_parse_data_tlv(char** list_str, void *dst, int dst_size, const char token,
-                     int input_size, int *bytes_left)
-{
-	char* str;
-	uint16 short_temp;
-	uint32 int_temp;
-
-	if ((list_str == NULL) || (*list_str == NULL) ||(bytes_left == NULL) || (*bytes_left < 0)) {
-		DHD_ERROR(("%s error paramters\n", __FUNCTION__));
-		return -1;
-	}
-	str = *list_str;
-
-	/* Clean all dest bytes */
-	memset(dst, 0, dst_size);
-	while (*bytes_left > 0) {
-
-		if (str[0] != token) {
-			DHD_TRACE(("%s NOT Type=%d get=%d left_parse=%d \n",
-				__FUNCTION__, token, str[0], *bytes_left));
-			return -1;
-		}
-
-		*bytes_left -= 1;
-		str += 1;
-
-		if (input_size == 1) {
-			memcpy(dst, str, input_size);
-		}
-		else if (input_size == 2) {
-			memcpy(dst, (char *)htod16(memcpy(&short_temp, str, input_size)),
-				input_size);
-		}
-		else if (input_size == 4) {
-			memcpy(dst, (char *)htod32(memcpy(&int_temp, str, input_size)),
-				input_size);
-		}
-
-		*bytes_left -= input_size;
-		str += input_size;
-		*list_str = str;
-		return 1;
-	}
-	return 1;
-}
-
-/*
- *  channel list parsing from cscan tlv list
-*/
-int
-wl_iw_parse_channel_list_tlv(char** list_str, uint16* channel_list,
-                             int channel_num, int *bytes_left)
-{
-	char* str;
-	int idx = 0;
-
-	if ((list_str == NULL) || (*list_str == NULL) ||(bytes_left == NULL) || (*bytes_left < 0)) {
-		DHD_ERROR(("%s error paramters\n", __FUNCTION__));
-		return -1;
-	}
-	str = *list_str;
-
-	while (*bytes_left > 0) {
-
-		if (str[0] != CSCAN_TLV_TYPE_CHANNEL_IE) {
-			*list_str = str;
-			DHD_TRACE(("End channel=%d left_parse=%d %d\n", idx, *bytes_left, str[0]));
-			return idx;
-		}
-		/* Get proper CSCAN_TLV_TYPE_CHANNEL_IE */
-		*bytes_left -= 1;
-		str += 1;
-
-		if (str[0] == 0) {
-			/* All channels */
-			channel_list[idx] = 0x0;
-		}
-		else {
-			channel_list[idx] = (uint16)str[0];
-			DHD_TRACE(("%s channel=%d \n", __FUNCTION__,  channel_list[idx]));
-		}
-		*bytes_left -= 1;
-		str += 1;
-
-		if (idx++ > 255) {
-			DHD_ERROR(("%s Too many channels \n", __FUNCTION__));
-			return -1;
-		}
-	}
-
-	*list_str = str;
-	return idx;
-}
-
-/*
- *  SSIDs list parsing from cscan tlv list
- */
-int
-wl_iw_parse_ssid_list_tlv(char** list_str, wlc_ssid_t* ssid, int max, int *bytes_left)
-{
-	char* str;
-	int idx = 0;
-
-	if ((list_str == NULL) || (*list_str == NULL) || (*bytes_left < 0)) {
-		DHD_ERROR(("%s error paramters\n", __FUNCTION__));
-		return -1;
-	}
-	str = *list_str;
-	while (*bytes_left > 0) {
-
-		if (str[0] != CSCAN_TLV_TYPE_SSID_IE) {
-			*list_str = str;
-			DHD_TRACE(("nssid=%d left_parse=%d %d\n", idx, *bytes_left, str[0]));
-			return idx;
-		}
-
-		/* Get proper CSCAN_TLV_TYPE_SSID_IE */
-		*bytes_left -= 1;
-		str += 1;
-
-		if (str[0] == 0) {
-			/* Broadcast SSID */
-			ssid[idx].SSID_len = 0;
-			memset((char*)ssid[idx].SSID, 0x0, DOT11_MAX_SSID_LEN);
-			*bytes_left -= 1;
-			str += 1;
-
-			DHD_TRACE(("BROADCAST SCAN  left=%d\n", *bytes_left));
-		}
-		else if (str[0] <= DOT11_MAX_SSID_LEN) {
-			/* Get proper SSID size */
-			ssid[idx].SSID_len = str[0];
-			*bytes_left -= 1;
-			str += 1;
-
-			/* Get SSID */
-			if (ssid[idx].SSID_len > *bytes_left) {
-				DHD_ERROR(("%s out of memory range len=%d but left=%d\n",
-				__FUNCTION__, ssid[idx].SSID_len, *bytes_left));
-				return -1;
-			}
-
-			memcpy((char*)ssid[idx].SSID, str, ssid[idx].SSID_len);
-
-			*bytes_left -= ssid[idx].SSID_len;
-			str += ssid[idx].SSID_len;
-
-			DHD_TRACE(("%s :size=%d left=%d\n",
-				(char*)ssid[idx].SSID, ssid[idx].SSID_len, *bytes_left));
-		}
-		else {
-			DHD_ERROR(("### SSID size more that %d\n", str[0]));
-			return -1;
-		}
-
-		if (idx++ >  max) {
-			DHD_ERROR(("%s number of SSIDs more that %d\n", __FUNCTION__, idx));
-			return -1;
-		}
-	}
-
-	*list_str = str;
-	return idx;
-}
-
-/* Parse a comma-separated list from list_str into ssid array, starting
- * at index idx.  Max specifies size of the ssid array.  Parses ssids
- * and returns updated idx; if idx >= max not all fit, the excess have
- * not been copied.  Returns -1 on empty string, or on ssid too long.
- */
-int
-wl_iw_parse_ssid_list(char** list_str, wlc_ssid_t* ssid, int idx, int max)
-{
-	char* str, *ptr;
-
-	if ((list_str == NULL) || (*list_str == NULL))
-		return -1;
-
-	for (str = *list_str; str != NULL; str = ptr) {
-
-		/* check for next TAG */
-		if (!strncmp(str, GET_CHANNEL, strlen(GET_CHANNEL))) {
-			*list_str	 = str + strlen(GET_CHANNEL);
-			return idx;
-		}
-
-		if ((ptr = strchr(str, ',')) != NULL) {
-			*ptr++ = '\0';
-		}
-
-		if (strlen(str) > DOT11_MAX_SSID_LEN) {
-			DHD_ERROR(("ssid <%s> exceeds %d\n", str, DOT11_MAX_SSID_LEN));
-			return -1;
-		}
-
-		if (strlen(str) == 0)
-			ssid[idx].SSID_len = 0;
-
-		if (idx < max) {
-			bzero(ssid[idx].SSID, sizeof(ssid[idx].SSID));
-			strncpy((char*)ssid[idx].SSID, str, sizeof(ssid[idx].SSID) - 1);
-			ssid[idx].SSID_len = strlen(str);
-		}
-		idx++;
-	}
-	return idx;
-}
-
-/*
- * Parse channel list from iwpriv CSCAN
- */
-int
-wl_iw_parse_channel_list(char** list_str, uint16* channel_list, int channel_num)
-{
-	int num;
-	int val;
-	char* str;
-	char* endptr = NULL;
-
-	if ((list_str == NULL)||(*list_str == NULL))
-		return -1;
-
-	str = *list_str;
-	num = 0;
-	while (strncmp(str, GET_NPROBE, strlen(GET_NPROBE))) {
-		val = (int)strtoul(str, &endptr, 0);
-		if (endptr == str) {
-			printf("could not parse channel number starting at"
-				" substring \"%s\" in list:\n%s\n",
-				str, *list_str);
-			return -1;
-		}
-		str = endptr + strspn(endptr, " ,");
-
-		if (num == channel_num) {
-			DHD_ERROR(("too many channels (more than %d) in channel list:\n%s\n",
-				channel_num, *list_str));
-			return -1;
-		}
-
-		channel_list[num++] = (uint16)val;
-	}
-	*list_str = str;
-	return num;
-}

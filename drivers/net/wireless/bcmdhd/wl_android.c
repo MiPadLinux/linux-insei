@@ -387,11 +387,18 @@ static int wl_android_get_rssi(struct net_device *net, char *command, int total_
 		return -1;
 	if ((ssid.SSID_len == 0) || (ssid.SSID_len > DOT11_MAX_SSID_LEN)) {
 		DHD_ERROR(("%s: wldev_get_ssid failed\n", __FUNCTION__));
+	} else if (total_len <= ssid.SSID_len) {
+		return -ENOMEM;
 	} else {
 		memcpy(command, ssid.SSID, ssid.SSID_len);
 		bytes_written = ssid.SSID_len;
 	}
-	bytes_written += snprintf(&command[bytes_written], total_len, " rssi %d", scbval.val);
+	if ((total_len - bytes_written) < (strlen(" rssi -XXX") + 1))
+		return -ENOMEM;
+	bytes_written += scnprintf(&command[bytes_written],
+		total_len - bytes_written, " rssi %d", scbval.val);
+	command[bytes_written] = '\0';
+
 	DHD_TRACE(("%s: command result is %s (%d)\n", __FUNCTION__, command, bytes_written));
 	return bytes_written;
 }
@@ -767,107 +774,6 @@ wls_parse_batching_cmd(struct net_device *dev, char *command, int total_len)
 exit:
 	return err;
 }
-#ifndef WL_SCHED_SCAN
-static int wl_android_set_pno_setup(struct net_device *dev, char *command, int total_len)
-{
-	wlc_ssid_t ssids_local[MAX_PFN_LIST_COUNT];
-	int res = -1;
-	int nssid = 0;
-	cmd_tlv_t *cmd_tlv_temp;
-	char *str_ptr;
-	int tlv_size_left;
-	int pno_time = 0;
-	int pno_repeat = 0;
-	int pno_freq_expo_max = 0;
-
-#ifdef PNO_SET_DEBUG
-	int i;
-	char pno_in_example[] = {
-		'P', 'N', 'O', 'S', 'E', 'T', 'U', 'P', ' ',
-		'S', '1', '2', '0',
-		'S',
-		0x05,
-		'd', 'l', 'i', 'n', 'k',
-		'S',
-		0x04,
-		'G', 'O', 'O', 'G',
-		'T',
-		'0', 'B',
-		'R',
-		'2',
-		'M',
-		'2',
-		0x00
-		};
-#endif /* PNO_SET_DEBUG */
-	DHD_PNO(("%s: command=%s, len=%d\n", __FUNCTION__, command, total_len));
-
-	if (total_len < (strlen(CMD_PNOSETUP_SET) + sizeof(cmd_tlv_t))) {
-		DHD_ERROR(("%s argument=%d less min size\n", __FUNCTION__, total_len));
-		goto exit_proc;
-	}
-#ifdef PNO_SET_DEBUG
-	memcpy(command, pno_in_example, sizeof(pno_in_example));
-	total_len = sizeof(pno_in_example);
-#endif
-	str_ptr = command + strlen(CMD_PNOSETUP_SET);
-	tlv_size_left = total_len - strlen(CMD_PNOSETUP_SET);
-
-	cmd_tlv_temp = (cmd_tlv_t *)str_ptr;
-	memset(ssids_local, 0, sizeof(ssids_local));
-
-	if ((cmd_tlv_temp->prefix == PNO_TLV_PREFIX) &&
-		(cmd_tlv_temp->version == PNO_TLV_VERSION) &&
-		(cmd_tlv_temp->subtype == PNO_TLV_SUBTYPE_LEGACY_PNO)) {
-
-		str_ptr += sizeof(cmd_tlv_t);
-		tlv_size_left -= sizeof(cmd_tlv_t);
-
-		if ((nssid = wl_iw_parse_ssid_list_tlv(&str_ptr, ssids_local,
-			MAX_PFN_LIST_COUNT, &tlv_size_left)) <= 0) {
-			DHD_ERROR(("SSID is not presented or corrupted ret=%d\n", nssid));
-			goto exit_proc;
-		} else {
-			if ((str_ptr[0] != PNO_TLV_TYPE_TIME) || (tlv_size_left <= 1)) {
-				DHD_ERROR(("%s scan duration corrupted field size %d\n",
-					__FUNCTION__, tlv_size_left));
-				goto exit_proc;
-			}
-			str_ptr++;
-			pno_time = simple_strtoul(str_ptr, &str_ptr, 16);
-			DHD_PNO(("%s: pno_time=%d\n", __FUNCTION__, pno_time));
-
-			if (str_ptr[0] != 0) {
-				if ((str_ptr[0] != PNO_TLV_FREQ_REPEAT)) {
-					DHD_ERROR(("%s pno repeat : corrupted field\n",
-						__FUNCTION__));
-					goto exit_proc;
-				}
-				str_ptr++;
-				pno_repeat = simple_strtoul(str_ptr, &str_ptr, 16);
-				DHD_PNO(("%s :got pno_repeat=%d\n", __FUNCTION__, pno_repeat));
-				if (str_ptr[0] != PNO_TLV_FREQ_EXPO_MAX) {
-					DHD_ERROR(("%s FREQ_EXPO_MAX corrupted field size\n",
-						__FUNCTION__));
-					goto exit_proc;
-				}
-				str_ptr++;
-				pno_freq_expo_max = simple_strtoul(str_ptr, &str_ptr, 16);
-				DHD_PNO(("%s: pno_freq_expo_max=%d\n",
-					__FUNCTION__, pno_freq_expo_max));
-			}
-		}
-	} else {
-		DHD_ERROR(("%s get wrong TLV command\n", __FUNCTION__));
-		goto exit_proc;
-	}
-
-	res = dhd_dev_pno_set_for_ssid(dev, ssids_local, nssid, pno_time, pno_repeat,
-		pno_freq_expo_max, NULL, 0);
-exit_proc:
-	return res;
-}
-#endif /* !WL_SCHED_SCAN */
 #endif /* PNO_SUPPORT  */
 
 static int wl_android_get_p2p_dev_addr(struct net_device *ndev, char *command, int total_len)
@@ -1056,6 +962,9 @@ int wl_android_wifi_on(struct net_device *dev)
 				break;
 			DHD_ERROR(("\nfailed to power up wifi chip, retry again (%d left) **\n\n",
 				retry));
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+			TEGRA_SYSFS_HISTOGRAM_STAT_INC(wifi_on_retry);
+#endif
 #ifdef BCMPCIE
 			dhd_net_bus_devreset(dev, TRUE);
 #endif /* BCMPCIE */
@@ -1063,12 +972,18 @@ int wl_android_wifi_on(struct net_device *dev)
 		} while (retry-- > 0);
 		if (ret != 0) {
 			DHD_ERROR(("\nfailed to power up wifi chip, max retry reached **\n\n"));
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+			TEGRA_SYSFS_HISTOGRAM_STAT_INC(wifi_on_fail);
+#endif
 			goto exit;
 		}
 #ifdef BCMSDIO
 		ret = dhd_net_bus_devreset(dev, FALSE);
 		dhd_net_bus_resume(dev, 1);
 #endif /* BCMSDIO */
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+		TEGRA_SYSFS_HISTOGRAM_STAT_INC(wifi_on_success);
+#endif
 
 #ifndef BCMPCIE
 		if (!ret) {
@@ -1099,6 +1014,8 @@ int wl_android_wifi_off(struct net_device *dev)
 		DHD_TRACE(("%s: dev is null\n", __FUNCTION__));
 		return -EINVAL;
 	}
+	wl_fw_assoc_timeout_cancel();
+
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 	tegra_sysfs_off();
 #endif
@@ -2396,10 +2313,13 @@ static int wl_android_get_link_status(struct net_device *dev, char *command,
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 {
 #define PRIVATE_COMMAND_MAX_LEN	8192
+#define PRIVATE_COMMAND_DEF_LEN	4096
+
 	int ret = 0;
 	char *command = NULL;
 	int bytes_written = 0;
 	android_wifi_priv_cmd priv_cmd;
+	int buf_size = 0;
 
 	net_os_wake_lock(net);
 
@@ -2428,12 +2348,17 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 			goto exit;
 		}
 	}
+
 	if ((priv_cmd.total_len > PRIVATE_COMMAND_MAX_LEN) || (priv_cmd.total_len < 0)) {
-		DHD_ERROR(("%s: too long priavte command\n", __FUNCTION__));
+		DHD_ERROR(("%s: buf length invalid:%d\n", __FUNCTION__,
+			   priv_cmd.total_len));
 		ret = -EINVAL;
 		goto exit;
 	}
-	command = kmalloc((priv_cmd.total_len + 1), GFP_KERNEL);
+
+	buf_size = max(priv_cmd.total_len, PRIVATE_COMMAND_DEF_LEN);
+	command = kmalloc((buf_size + 1), GFP_KERNEL);
+
 	if (!command)
 	{
 		DHD_ERROR(("%s: failed to allocate memory\n", __FUNCTION__));
@@ -2448,6 +2373,41 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 
 	DHD_INFO(("%s: Android private cmd \"%s\" on %s\n", __FUNCTION__, command, ifr->ifr_name));
 
+	bytes_written = wl_handle_private_cmd(net, command, priv_cmd.total_len);
+	if (bytes_written >= 0) {
+		if ((bytes_written == 0) && (priv_cmd.total_len > 0))
+			command[0] = '\0';
+		if (bytes_written >= priv_cmd.total_len) {
+			DHD_ERROR(("%s: err. b_w:%d >= tot:%d\n", __FUNCTION__,
+				   bytes_written, priv_cmd.total_len));
+			ret = BCME_BUFTOOSHORT;
+			goto exit;
+		}
+		bytes_written++;
+		priv_cmd.used_len = bytes_written;
+		if (copy_to_user(priv_cmd.buf, command, bytes_written)) {
+			DHD_ERROR(("%s: failed copy to user\n", __FUNCTION__));
+			ret = -EFAULT;
+		}
+	} else {
+		ret = bytes_written;
+	}
+
+exit:
+	net_os_wake_unlock(net);
+	kfree(command);
+	return ret;
+}
+
+int
+wl_handle_private_cmd(struct net_device *net, char *command, u32 buf_size)
+{
+	int bytes_written = 0;
+	android_wifi_priv_cmd priv_cmd;
+
+	bzero(&priv_cmd, sizeof(android_wifi_priv_cmd));
+	priv_cmd.total_len = buf_size;
+
 	if (brcm_strnicmp(command, CMD_START, strlen(CMD_START)) == 0) {
 		DHD_INFO(("%s, Received regular START command\n", __FUNCTION__));
 		bytes_written = wl_android_wifi_on(net);
@@ -2457,10 +2417,9 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	}
 
 	if (!g_wifi_on) {
-		DHD_ERROR(("%s: Ignore private cmd \"%s\" - iface %s is down\n",
-			__FUNCTION__, command, ifr->ifr_name));
-		ret = 0;
-		goto exit;
+		DHD_ERROR(("%s: Ignore private cmd \"%s\" - iface is down\n",
+			   __FUNCTION__, command));
+		return 0;
 	}
 
 	if (brcm_strnicmp(command, CMD_STOP, strlen(CMD_STOP)) == 0) {
@@ -2498,7 +2457,6 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	} else if (brcm_strnicmp(command, CMD_PKT_FILTER_PORTS, strlen(CMD_PKT_FILTER_PORTS)) == 0) {
 		bytes_written = dhd_set_packet_filter_ports(net,
 			&command[strlen(CMD_PKT_FILTER_PORTS) + 1]);
-		ret = bytes_written;
 	}
 #endif /* PKT_FILTER_SUPPORT */
 	else if (brcm_strnicmp(command, CMD_BTCOEXSCAN_START, strlen(CMD_BTCOEXSCAN_START)) == 0) {
@@ -2564,11 +2522,6 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (brcm_strnicmp(command, CMD_PNOSSIDCLR_SET, strlen(CMD_PNOSSIDCLR_SET)) == 0) {
 		bytes_written = dhd_dev_pno_stop_for_ssid(net);
 	}
-#ifndef WL_SCHED_SCAN
-	else if (brcm_strnicmp(command, CMD_PNOSETUP_SET, strlen(CMD_PNOSETUP_SET)) == 0) {
-		bytes_written = wl_android_set_pno_setup(net, command, priv_cmd.total_len);
-	}
-#endif /* !WL_SCHED_SCAN */
 	else if (brcm_strnicmp(command, CMD_PNOENABLE_SET, strlen(CMD_PNOENABLE_SET)) == 0) {
 		int enable = *(command + strlen(CMD_PNOENABLE_SET) + 1) - '0';
 		bytes_written = (enable)? 0 : dhd_dev_pno_stop_for_ssid(net);
@@ -2700,36 +2653,10 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 #endif /* WLWFDS */
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
-		snprintf(command, 3, "OK");
-		bytes_written = strlen("OK");
+		bytes_written = scnprintf(command, sizeof("FAIL"), "FAIL");
 	}
 
-	if (bytes_written >= 0) {
-		if ((bytes_written == 0) && (priv_cmd.total_len > 0))
-			command[0] = '\0';
-		if (bytes_written >= priv_cmd.total_len) {
-			DHD_ERROR(("%s: bytes_written = %d\n", __FUNCTION__, bytes_written));
-			bytes_written = priv_cmd.total_len;
-		} else {
-			bytes_written++;
-		}
-		priv_cmd.used_len = bytes_written;
-		if (copy_to_user(priv_cmd.buf, command, bytes_written)) {
-			DHD_ERROR(("%s: failed to copy data to user buffer\n", __FUNCTION__));
-			ret = -EFAULT;
-		}
-	}
-	else {
-		ret = bytes_written;
-	}
-
-exit:
-	net_os_wake_unlock(net);
-	if (command) {
-		kfree(command);
-	}
-
-	return ret;
+	return bytes_written;
 }
 
 int wl_android_init(void)
