@@ -1728,8 +1728,13 @@ wl_cfgp2p_listen_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
  *  We can't report cfg80211_remain_on_channel_expired from Timer ISR context,
  *  so lets do it from thread context.
  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 void
 wl_cfgp2p_listen_expired(unsigned long data)
+#else
+void
+wl_cfgp2p_listen_expired(struct timer_list *data)
+#endif
 {
 	wl_event_msg_t msg;
 	struct bcm_cfg80211 *cfg = (struct bcm_cfg80211 *) data;

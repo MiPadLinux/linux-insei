@@ -178,6 +178,7 @@ enum wl_cfgp2p_status {
 			printk args;							\
 		}									\
 	} while (0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 #define INIT_TIMER(timer, func, duration, extra_delay)	\
 	do {				   \
 		init_timer(timer); \
@@ -186,7 +187,14 @@ enum wl_cfgp2p_status {
 		timer->data = (unsigned long) cfg; \
 		add_timer(timer); \
 	} while (0);
-
+#else
+#define INIT_TIMER(timer, func, duration, extra_delay)	\
+	do {				   \
+		timer_setup(timer, func, (unsigned long) cfg); \
+		timer->expires = jiffies + msecs_to_jiffies(duration + extra_delay); \
+		add_timer(timer); \
+	} while (0);
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) && !defined(WL_CFG80211_P2P_DEV_IF)
 #define WL_CFG80211_P2P_DEV_IF
 
@@ -225,8 +233,13 @@ enum wl_cfgp2p_status {
 #define bcm_struct_cfgdev	struct net_device
 #endif /* WL_CFG80211_P2P_DEV_IF */
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 extern void
 wl_cfgp2p_listen_expired(unsigned long data);
+#else
+extern void
+wl_cfgp2p_listen_expired(struct timer_list *data);
+#endif
 extern bool
 wl_cfgp2p_is_pub_action(void *frame, u32 frame_len);
 extern bool

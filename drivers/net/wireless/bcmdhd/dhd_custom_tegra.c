@@ -24,6 +24,7 @@
 #include <dhd_dbg.h>
 #include <dngl_stats.h>
 #include <dhd.h>
+#include <linux/of.h>
 
 #define WIFI_MAC_ADDR_FILE "/mnt/factory/wifi/wifi_mac.txt"
 

@@ -294,8 +294,11 @@ wl_cfg80211_bt_setflag(struct net_device *dev, bool set)
 			sizeof(buf_flag7_default));
 #endif
 }
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 static void wl_cfg80211_bt_timerfunc(ulong data)
+#else
+static void wl_cfg80211_bt_timerfunc(struct timer_list *data)
+#endif
 {
 	struct btcoex_info *bt_local = (struct btcoex_info *)data;
 	WL_TRACE(("Enter\n"));
@@ -387,9 +390,14 @@ void* wl_cfg80211_btcoex_init(struct net_device *ndev)
 	btco_inf->ts_dhcp_ok = 0;
 	/* Set up timer for BT  */
 	btco_inf->timer_ms = 10;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 	init_timer(&btco_inf->timer);
 	btco_inf->timer.data = (ulong)btco_inf;
 	btco_inf->timer.function = wl_cfg80211_bt_timerfunc;
+#else
+	timer_setup(&btco_inf->timer, wl_cfg80211_bt_timerfunc, (ulong)btco_inf);
+#endif
+
 
 	btco_inf->dev = ndev;
 

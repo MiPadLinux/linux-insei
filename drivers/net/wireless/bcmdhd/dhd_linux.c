@@ -40,6 +40,8 @@
 
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/sched.h>
+#include <uapi/linux/sched/types.h>
 #include <linux/slab.h>
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
@@ -3188,9 +3190,6 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 		ASSERT(ifidx < DHD_MAX_IFS && dhd->iflist[ifidx]);
 		ifp = dhd->iflist[ifidx];
 
-		if (ifp->net)
-			ifp->net->last_rx = jiffies;
-
 		if (ntoh16(skb->protocol) != ETHER_TYPE_BRCM) {
 			dhdp->dstats.rx_bytes += skb->len;
 			dhdp->rx_packets++; /* Local count */
@@ -3318,9 +3317,9 @@ dhd_watchdog_thread(void *data)
 	 * so get rid of all our resources
 	 */
 	if (dhd_watchdog_prio > 0) {
-		struct sched_param param;
-		param.sched_priority = (dhd_watchdog_prio < MAX_RT_PRIO)?
-			dhd_watchdog_prio:(MAX_RT_PRIO-1);
+		struct sched_param param = {
+			 .sched_priority = (dhd_watchdog_prio < MAX_RT_PRIO)? dhd_watchdog_prio:(MAX_RT_PRIO-1)
+		};
 		setScheduler(current, SCHED_FIFO, &param);
 	}
 
@@ -3361,8 +3360,11 @@ dhd_watchdog_thread(void *data)
 
 	complete_and_exit(&tsk->completed, 0);
 }
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 static void dhd_watchdog(ulong data)
+#else
+static void dhd_watchdog(struct timer_list *data)
+#endif
 {
 	dhd_info_t *dhd = (dhd_info_t *)data;
 	unsigned long flags;
@@ -4676,12 +4678,27 @@ dhd_allocate_if(dhd_pub_t *dhdpub, int ifidx, char *name,
 		ifp->net->name[IFNAMSIZ - 1] = '\0';
 	}
 #ifdef WL_CFG80211
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,12,0)
+	ifp->net->needs_free_netdev = true;
+#endif
 	if (ifidx == 0)
-		ifp->net->destructor = free_netdev;
-	else
-		ifp->net->destructor = dhd_netdev_free;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,12,0)
+		ifp->net->priv_destructor  = free_netdev;
 #else
-	ifp->net->destructor = free_netdev;
+		ifp->net->destructor = free_netdev;
+#endif
+	else
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,12,0)
+		ifp->net->priv_destructor  = dhd_netdev_free;
+#else
+		ifp->net->destructor = dhd_netdev_free;
+#endif
+#else
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,12,0)
+		ifp->net->priv_destructor  = free_netdev;
+#else
+		ifp->net->destructor = free_netdev;
+#endif
 #endif /* WL_CFG80211 */
 	strncpy(ifp->name, ifp->net->name, IFNAMSIZ);
 	ifp->name[IFNAMSIZ - 1] = '\0';
@@ -5265,11 +5282,14 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 
 	/* Set up the watchdog timer */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 	init_timer(&dhd->timer);
 	dhd->timer.data = (ulong)dhd;
 	dhd->timer.function = dhd_watchdog;
+#else
+	timer_setup(&dhd->timer, dhd_watchdog, (ulong)dhd);
+#endif
 	dhd->default_wd_interval = dhd_watchdog_ms;
-
 	if (dhd_watchdog_prio >= 0) {
 		/* Initialize watchdog thread */
 		PROC_START(dhd_watchdog_thread, dhd, &dhd->thr_wdt_ctl, 0, "dhd_watchdog_thread");

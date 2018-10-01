@@ -350,7 +350,11 @@ static void _tdata_psh_info_pool_deinit(dhd_pub_t *dhdp,
 }
 #endif /* BCMSDIO */
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 static void dhd_tcpack_send(ulong data)
+#else
+static void dhd_tcpack_send(struct timer_list *data)
+#endif
 {
 	tcpack_sup_module_t *tcpack_sup_mod;
 	tcpack_info_t *cur_tbl = (tcpack_info_t *)data;
@@ -471,10 +475,14 @@ int dhd_tcpack_suppress_set(dhd_pub_t *dhdp, uint8 mode)
 		for (i = 0; i < TCPACK_INFO_MAXNUM; i++)
 		{
 			tcpack_sup_mod->tcpack_info_tbl[i].dhdp = dhdp;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 			init_timer(&tcpack_sup_mod->tcpack_info_tbl[i].timer);
 			tcpack_sup_mod->tcpack_info_tbl[i].timer.data =
 				(ulong)&tcpack_sup_mod->tcpack_info_tbl[i];
 			tcpack_sup_mod->tcpack_info_tbl[i].timer.function = dhd_tcpack_send;
+#else
+			timer_setup(&tcpack_sup_mod->tcpack_info_tbl[i].timer, dhd_tcpack_send, (ulong)&tcpack_sup_mod->tcpack_info_tbl[i]);
+#endif
 		}
 	}
 

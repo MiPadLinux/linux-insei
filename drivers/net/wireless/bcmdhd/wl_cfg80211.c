@@ -1427,7 +1427,7 @@ wl_cfg80211_add_virtual_iface(struct wiphy *wiphy,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
 	unsigned char name_assign_type,
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) */
-	enum nl80211_iftype type, u32 *flags,
+	enum nl80211_iftype type,
 	struct vif_params *params)
 {
 	s32 err;
@@ -1852,7 +1852,7 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 
 static s32
 wl_cfg80211_change_virtual_iface(struct wiphy *wiphy, struct net_device *ndev,
-	enum nl80211_iftype type, u32 *flags,
+	enum nl80211_iftype type,
 	struct vif_params *params)
 {
 	s32 ap = 0;
@@ -9872,6 +9872,9 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	struct channel_info ci;
 	u32 cur_channel;
 #endif 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,12,0)
+	struct cfg80211_roam_info roam_info = {};
+#endif
 
 
 	/* Skip calling cfg80211_roamed If the channels are same and
@@ -9914,6 +9917,8 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	WL_ERR(("wl_bss_roaming_done succeeded to " MACDBG " (ch:%d)\n",
 		MAC2STRDBG((const u8 *)(&e->addr)), *channel));
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,12,0)
 	cfg80211_roamed(ndev,
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39))
 		notify_channel,
@@ -9921,7 +9926,17 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		curbssid,
 		conn_info->req_ie, conn_info->req_ie_len,
 		conn_info->resp_ie, conn_info->resp_ie_len, GFP_KERNEL);
+#else
+	roam_info.channel = notify_channel;
+	roam_info.bssid = curbssid;
+	roam_info.req_ie = conn_info->req_ie;
+	roam_info.req_ie_len = conn_info->req_ie_len;
+	roam_info.resp_ie = conn_info->resp_ie;
+	roam_info.resp_ie_len = conn_info->resp_ie_len;
+	cfg80211_roamed(ndev, &roam_info, GFP_KERNEL);
+#endif
 	WL_DBG(("Report roaming result\n"));
+
 
 	memcpy(&cfg->last_roamed_addr, &e->addr, ETHER_ADDR_LEN);
 	wl_set_drv_status(cfg, CONNECTED, ndev);
@@ -10939,8 +10954,11 @@ static void wl_destroy_event_handler(struct bcm_cfg80211 *cfg)
 	if (cfg->event_tsk.thr_pid >= 0)
 		PROC_STOP(&cfg->event_tsk);
 }
-
-static void wl_scan_timeout(unsigned long data)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
+static void wl_scan_timeout(ulong data)
+#else
+static void wl_scan_timeout(struct timer_list *data)
+#endif
 {
 	wl_event_msg_t msg;
 	struct bcm_cfg80211 *cfg = (struct bcm_cfg80211 *)data;
@@ -11911,9 +11929,14 @@ static s32 wl_init_scan(struct bcm_cfg80211 *cfg)
 	wl_escan_init_sync_id(cfg);
 
 	/* Init scan_timeout timer */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 	init_timer(&cfg->scan_timeout);
 	cfg->scan_timeout.data = (unsigned long) cfg;
 	cfg->scan_timeout.function = wl_scan_timeout;
+#else
+	timer_setup(&cfg->scan_timeout, wl_scan_timeout, (unsigned long) cfg);
+#endif
+	
 
 	return err;
 }
