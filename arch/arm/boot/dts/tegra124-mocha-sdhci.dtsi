@@ -40,6 +40,8 @@
 		max-frequency = <41000000>;
  		power-gpios = <&gpio TEGRA_GPIO(R, 0) 0>;
  		cd-gpios = <&gpio TEGRA_GPIO(V, 2) 0>;
+ 		wp-inverted;
+ 		cd-inverted;
  		vmmc-supply = <&palmas_ldo9>;
 		vqmmc-supply = <&palmas_smps9>;
 		status = "okay";
@@ -47,12 +49,12 @@
 	
 	/* Wi-Fi */
 	sdmmc1: sdhci@700b0000 {
- 		sd-uhs-ddr50;
+		status = "okay";
+		power-gpios = <&gpio TEGRA_GPIO(X, 7) GPIO_ACTIVE_HIGH>;
+		vmmc-supply = <&palmas_smps8>;
+		bus-width = <4>;
+		no-1-8-v;
 		non-removable;
 		keep-power-in-suspend;
-		max-frequency = <41000000>;
-		power-gpios = <&gpio TEGRA_GPIO(X, 7) 0>;
-		vmmc-supply = <&palmas_smps8>;
- 		status = "okay";
 	};
 };
