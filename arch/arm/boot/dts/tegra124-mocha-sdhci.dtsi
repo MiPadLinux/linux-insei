@@ -35,8 +35,6 @@
 	
 	/* SDcard */
 	sdmmc3: sdhci@700b0400 {
-		sd-uhs-ddr50;
-		mmc-ddr-3_3v;
 		max-frequency = <41000000>;
  		power-gpios = <&gpio TEGRA_GPIO(R, 0) 0>;
  		cd-gpios = <&gpio TEGRA_GPIO(V, 2) 0>;
@@ -52,9 +50,18 @@
 		status = "okay";
 		power-gpios = <&gpio TEGRA_GPIO(X, 7) GPIO_ACTIVE_HIGH>;
 		vmmc-supply = <&palmas_smps8>;
-		bus-width = <4>;
-		no-1-8-v;
 		non-removable;
 		keep-power-in-suspend;
+
+		nvidia,pad-autocal-pull-up-offset-3v3 = <0x00>;
+		nvidia,pad-autocal-pull-down-offset-3v3 = <0x76>;
+		nvidia,pad-autocal-pull-up-offset-1v8 = <0x76>;
+		nvidia,pad-autocal-pull-down-offset-1v8 = <0x76>;
+		nvidia,default-tap = <0x0>;
+		nvidia,default-trim = <0x2>;
+		
+		pinctrl-names = "sdmmc-3v3", "sdmmc-1v8";
+		pinctrl-0 = <&sdmmc1_3v3>;
+		pinctrl-1 = <&sdmmc1_1v8>;
 	};
 };
