@@ -75,6 +75,7 @@ static int sharp_panel_disable(struct drm_panel *panel)
 	}
 
 	sharp->enabled = false;
+	dev_err(panel->dev, "Disable\n");
 
 	return 0;
 }
@@ -99,40 +100,6 @@ static int sharp_panel_unprepare(struct drm_panel *panel)
 	regulator_disable(sharp->dvdd_lcd_1v8);
 
 	sharp->prepared = false;
-
-	return 0;
-}
-
-static int sharp_setup_symmetrical_split(struct mipi_dsi_device *left,
-					 struct mipi_dsi_device *right,
-					 const struct drm_display_mode *mode)
-{
-	int err;
-
-	err = mipi_dsi_dcs_set_column_address(left, 0, mode->hdisplay / 2 - 1);
-	if (err < 0) {
-		dev_err(&left->dev, "failed to set column address: %d\n", err);
-		return err;
-	}
-
-	err = mipi_dsi_dcs_set_page_address(left, 0, mode->vdisplay - 1);
-	if (err < 0) {
-		dev_err(&left->dev, "failed to set page address: %d\n", err);
-		return err;
-	}
-
-	err = mipi_dsi_dcs_set_column_address(right, mode->hdisplay / 2,
-					      mode->hdisplay - 1);
-	if (err < 0) {
-		dev_err(&right->dev, "failed to set column address: %d\n", err);
-		return err;
-	}
-
-	err = mipi_dsi_dcs_set_page_address(right, 0, mode->vdisplay - 1);
-	if (err < 0) {
-		dev_err(&right->dev, "failed to set page address: %d\n", err);
-		return err;
-	}
 
 	return 0;
 }
@@ -248,31 +215,11 @@ static int sharp_panel_prepare(struct drm_panel *panel)
 		gpio_set_value(sharp->reset_gpio, 1);
 		msleep(32);
 	}
-	
-	err = sharp_setup_symmetrical_split(sharp->link2, sharp->link1, sharp->mode);
-	if (err < 0) {
-		dev_err(panel->dev, "failed to set up symmetrical split: %d\n",
-			err);
-		goto poweroff;
-	}
 
 	// Exit from SLEEP MODE
 	mipi_dsi_dcs_exit_sleep_mode(sharp->link1);
 	mipi_dsi_dcs_exit_sleep_mode(sharp->link2);
 	sharp_wait_frames(sharp, 6);
-	
-	/* Set pixel format */
-	err = mipi_dsi_dcs_set_pixel_format(sharp->link1, format);
-	if (err < 0) {
-		dev_err(panel->dev, "failed to set pixel format: %d\n", err);
-		goto poweroff;
-	}
-
-	err = mipi_dsi_dcs_set_pixel_format(sharp->link2, format);
-	if (err < 0) {
-		dev_err(panel->dev, "failed to set pixel format: %d\n", err);
-		goto poweroff;
-	}
 
 	/* Set brightness */
 	err = panel_sharp_write_display_brightness(sharp);
@@ -316,7 +263,7 @@ poweroff:
 	regulator_disable(sharp->avdd_lcd_vsn_5v5);
 	regulator_disable(sharp->avdd_lcd_vsp_5v5);
 	regulator_disable(sharp->dvdd_lcd_1v8);
-	dev_err(panel->dev, "ERROR, Poweroff\n");
+	dev_err(panel->dev, "probe error, poweroff\n");
 	return err;
 }
 
@@ -480,32 +427,28 @@ static int sharp_panel_probe(struct mipi_dsi_device *dsi)
 		secondary = of_find_mipi_dsi_device_by_node(np);
 		of_node_put(np);
 
-		if (!secondary) {
-			return -EPROBE_DEFER;
-		}
-	}
-	/* register a panel for only the DSI-LINK1 interface */
-	if (secondary) {
-		sharp = devm_kzalloc(&dsi->dev, sizeof(*sharp), GFP_KERNEL);
-		if (!sharp) {
-			put_device(&secondary->dev);
-			return -ENOMEM;
-		}
+		if (secondary != NULL || secondary) {
+			sharp = devm_kzalloc(&dsi->dev, sizeof(*sharp), GFP_KERNEL);
+			if (!sharp) {
+				put_device(&secondary->dev);
+				return -ENOMEM;
+			}
 
-		mipi_dsi_set_drvdata(dsi, sharp);
+			mipi_dsi_set_drvdata(dsi, sharp);
 
-		sharp->link2 = secondary;
-		sharp->link1 = dsi;
+			sharp->link2 = secondary;
+			sharp->link1 = dsi;
 
-		err = sharp_panel_add(sharp);
-		if (err < 0) {
-			put_device(&secondary->dev);
-			return err;
+			err = sharp_panel_add(sharp);
+			if (err < 0) {
+				put_device(&secondary->dev);
+				return err;
+			}
 		}
 	}
 	err = mipi_dsi_attach(dsi);
 	if (err < 0) {
-		if (secondary)
+		if (secondary || secondary != NULL)
 			sharp_panel_del(sharp);
 
 		return err;
