@@ -119,6 +119,9 @@ struct bq2419x_chip {
        int                             wdt_refresh_timeout;
        struct delayed_work             bq_wdt_work;
 
+	   struct device_node			   *vbus_np;
+	   struct device_node			   *chg_np;
+	   
        struct regulator_dev            *chg_rdev;
        struct regulator_dev            *vbus_rdev;
 };
@@ -161,24 +164,8 @@ static struct of_regulator_match bq2419x_matches[] = {
 static int bq2419x_parse_dt_reg_data(struct bq2419x_chip *bq2419x)
 {
        struct device_node *np = of_node_get(bq2419x->dev->of_node);
-       struct device_node *regulators;
        int ret;
        u32 prop;
-
-       regulators = of_find_node_by_name(np, "regulators");
-       if (!regulators) {
-               dev_err(bq2419x->dev, "regulator node not found\n");
-               return -ENODEV;
-       }
-
-       ret = of_regulator_match(bq2419x->dev, regulators, bq2419x_matches,
-                               ARRAY_SIZE(bq2419x_matches));
-       of_node_put(regulators);
-       if (ret < 0) {
-               dev_err(bq2419x->dev,
-                       "Parsing of regulator init data failed %d\n", ret);
-               return ret;
-       }
 
        ret = of_property_read_u32(np, "ti,watchdog-timeout", &prop);
        if (!ret)
@@ -559,17 +546,48 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
        return IRQ_HANDLED;
 }
 
+static int bq2419x_get_charger_regulator(struct i2c_client *client, struct bq2419x_chip *bq2419x)
+{
+	struct device_node *np = client->dev.of_node;
+	struct device_node *chg_reg_node;
+
+	chg_reg_node = of_find_node_by_name(np, "charger");
+	if (chg_reg_node) {
+		bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data = devm_kzalloc(&client->dev,
+			sizeof(*(bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data)), GFP_KERNEL);
+		if (!bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data)
+			return -ENOMEM;
+
+		bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data = of_get_regulator_init_data(
+					&client->dev, chg_reg_node, &bq2419x_reg_desc[BQ2419X_REGULATOR_CHARGER]);
+		if (!bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data)
+			return -EINVAL;
+
+		bq2419x->chg_np = chg_reg_node;
+	}
+
+	return 0;
+}
+
 static int bq2419x_init_charger_regulator(struct bq2419x_chip *bq2419x)
 {
        int ret = 0;
        struct regulator_config rconfig = { };
 
+	   bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data->constraints.valid_modes_mask =
+						REGULATOR_MODE_NORMAL |
+						REGULATOR_MODE_STANDBY;
+	   bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data->constraints.valid_ops_mask =
+						REGULATOR_CHANGE_MODE |
+						REGULATOR_CHANGE_STATUS |
+						REGULATOR_CHANGE_CURRENT;
+
+
        rconfig.dev = bq2419x->dev;
-       rconfig.of_node = bq2419x->dev->of_node;
-       rconfig.init_data =
-                       bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data;
+       rconfig.of_node = bq2419x->chg_np;
+       rconfig.init_data = bq2419x_matches[BQ2419X_REGULATOR_CHARGER].init_data;
        rconfig.driver_data = bq2419x;
-       bq2419x->chg_rdev = regulator_register(
+       bq2419x->chg_rdev = devm_regulator_register(bq2419x->dev,
                                &bq2419x_reg_desc[BQ2419X_REGULATOR_CHARGER],
                                &rconfig);
        if (IS_ERR(bq2419x->chg_rdev)) {
@@ -579,6 +597,30 @@ static int bq2419x_init_charger_regulator(struct bq2419x_chip *bq2419x)
        }
        return ret;
 }
+
+static int bq2419x_get_vbus_regulator(struct i2c_client *client, struct bq2419x_chip *bq2419x)
+{
+	struct device_node *np = client->dev.of_node;
+	struct device_node *vbus_reg_node;
+
+	vbus_reg_node = of_find_node_by_name(np, "vbus");
+	if (vbus_reg_node) {
+		bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data = devm_kzalloc(&client->dev,
+			sizeof(*(bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data)), GFP_KERNEL);
+		if (!bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data)
+			return -ENOMEM;
+
+		bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data = of_get_regulator_init_data(
+					&client->dev, vbus_reg_node, &bq2419x_reg_desc[BQ2419X_REGULATOR_VBUS]);
+		if (!bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data)
+			return -EINVAL;
+
+		bq2419x->vbus_np = vbus_reg_node;
+	}
+
+	return 0;
+}
+
 
 static int bq2419x_init_vbus_regulator(struct bq2419x_chip *bq2419x)
 {
@@ -596,12 +638,20 @@ static int bq2419x_init_vbus_regulator(struct bq2419x_chip *bq2419x)
                }
        }
 
+	   bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data->constraints.valid_modes_mask =
+				REGULATOR_MODE_NORMAL |
+				REGULATOR_MODE_STANDBY;
+	   bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data->constraints.valid_ops_mask =
+				REGULATOR_CHANGE_MODE |
+				REGULATOR_CHANGE_STATUS |
+				REGULATOR_CHANGE_VOLTAGE;
+
        /* Register the regulators */
        rconfig.dev = bq2419x->dev;
-       rconfig.of_node = bq2419x->dev->of_node;
+       rconfig.of_node = bq2419x->vbus_np;
        rconfig.init_data = bq2419x_matches[BQ2419X_REGULATOR_VBUS].init_data;
        rconfig.driver_data = bq2419x;
-       bq2419x->vbus_rdev = regulator_register(
+       bq2419x->vbus_rdev = devm_regulator_register(bq2419x->dev,
                                &bq2419x_reg_desc[BQ2419X_REGULATOR_VBUS],
                                &rconfig);
        if (IS_ERR(bq2419x->vbus_rdev)) {
@@ -696,11 +746,23 @@ static int bq2419x_probe(struct i2c_client *client,
                goto scrub_mutex;
        }
 
+	   ret = bq2419x_get_vbus_regulator(client, bq2419x);
+	   if (ret < 0) {
+			   dev_err(&client->dev, "Can't parse vbus regulator\n");
+			   return -EINVAL;
+	   }
+
        ret = bq2419x_init_vbus_regulator(bq2419x);
        if (ret < 0) {
                dev_err(&client->dev, "VBUS regualtor init failed %d\n", ret);
                goto scrub_mutex;
        }
+
+	   ret = bq2419x_get_charger_regulator(client, bq2419x);
+	   if (ret < 0) {
+			   dev_err(&client->dev, "Can't parse charger regulator\n");
+			   return -EINVAL;
+	   }
 
        ret = bq2419x_init_charger_regulator(bq2419x);
        if (ret < 0) {
