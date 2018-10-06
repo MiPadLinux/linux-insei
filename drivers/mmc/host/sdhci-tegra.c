@@ -43,11 +43,24 @@
 #define SDHCI_CLOCK_CTRL_PADPIPE_CLKEN_OVERRIDE		BIT(3)
 #define SDHCI_CLOCK_CTRL_SPI_MODE_CLKEN_OVERRIDE	BIT(2)
 
+#define SDHCI_TEGRA_VENDOR_SYS_SW_CTRL			0x104
+#define SDHCI_TEGRA_SYS_SW_CTRL_ENHANCED_STROBE		BIT(31)
+
+#define SDHCI_TEGRA_VENDOR_CAP_OVERRIDES		0x10c
+#define SDHCI_TEGRA_CAP_OVERRIDES_DQS_TRIM_MASK		0x00003f00
+#define SDHCI_TEGRA_CAP_OVERRIDES_DQS_TRIM_SHIFT	8
+
 #define SDHCI_TEGRA_VENDOR_MISC_CTRL			0x120
 #define SDHCI_MISC_CTRL_ENABLE_SDR104			0x8
 #define SDHCI_MISC_CTRL_ENABLE_SDR50			0x10
 #define SDHCI_MISC_CTRL_ENABLE_SDHCI_SPEC_300		0x20
 #define SDHCI_MISC_CTRL_ENABLE_DDR50			0x200
+
+#define SDHCI_TEGRA_VENDOR_DLLCAL_CFG			0x1b0
+#define SDHCI_TEGRA_DLLCAL_CALIBRATE			BIT(31)
+
+#define SDHCI_TEGRA_VENDOR_DLLCAL_STA			0x1bc
+#define SDHCI_TEGRA_DLLCAL_STA_ACTIVE			BIT(31)
 
 #define SDHCI_VNDR_TUN_CTRL0_0				0x1c0
 #define SDHCI_VNDR_TUN_CTRL0_TUN_HW_TAP			0x20000
@@ -112,6 +125,7 @@ struct sdhci_tegra {
 
 	u32 default_tap;
 	u32 default_trim;
+	u32 dqs_trim;
 };
 
 static u16 tegra_sdhci_readw(struct sdhci_host *host, int reg)
@@ -287,6 +301,23 @@ static void tegra_sdhci_set_tap(struct sdhci_host *host, unsigned int tap)
 		sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 		tegra_sdhci_configure_card_clk(host, card_clk_enabled);
 	}
+}
+
+static void tegra_sdhci_hs400_enhanced_strobe(struct mmc_host *mmc,
+					      struct mmc_ios *ios)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	u32 val;
+
+	val = sdhci_readl(host, SDHCI_TEGRA_VENDOR_SYS_SW_CTRL);
+
+	if (ios->enhanced_strobe)
+		val |= SDHCI_TEGRA_SYS_SW_CTRL_ENHANCED_STROBE;
+	else
+		val &= ~SDHCI_TEGRA_SYS_SW_CTRL_ENHANCED_STROBE;
+
+	sdhci_writel(host, val, SDHCI_TEGRA_VENDOR_SYS_SW_CTRL);
+
 }
 
 static void tegra_sdhci_reset(struct sdhci_host *host, u8 mask)
@@ -524,7 +555,7 @@ static void tegra_sdhci_parse_pad_autocal_dt(struct sdhci_host *host)
 		autocal->pull_down_hs400 = autocal->pull_down_1v8;
 }
 
-static void tegra_sdhci_parse_default_tap_and_trim(struct sdhci_host *host)
+static void tegra_sdhci_parse_tap_and_trim(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_tegra *tegra_host = sdhci_pltfm_priv(pltfm_host);
@@ -539,6 +570,11 @@ static void tegra_sdhci_parse_default_tap_and_trim(struct sdhci_host *host)
 				       &tegra_host->default_trim);
 	if (err)
 		tegra_host->default_trim = 0;
+
+	err = device_property_read_u32(host->mmc->parent, "nvidia,dqs-trim",
+				       &tegra_host->dqs_trim);
+	if (err)
+		tegra_host->dqs_trim = 0x11;
 }
 
 static void tegra_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
@@ -584,19 +620,52 @@ static unsigned int tegra_sdhci_get_max_clock(struct sdhci_host *host)
 	return clk_round_rate(pltfm_host->clk, UINT_MAX);
 }
 
+static void tegra_sdhci_set_dqs_trim(struct sdhci_host *host, u8 trim)
+{
+	u32 val;
+
+	val = sdhci_readl(host, SDHCI_TEGRA_VENDOR_CAP_OVERRIDES);
+	val &= ~SDHCI_TEGRA_CAP_OVERRIDES_DQS_TRIM_MASK;
+	val |= trim << SDHCI_TEGRA_CAP_OVERRIDES_DQS_TRIM_SHIFT;
+	sdhci_writel(host, val, SDHCI_TEGRA_VENDOR_CAP_OVERRIDES);
+}
+
+static void tegra_sdhci_hs400_dll_cal(struct sdhci_host *host)
+{
+	u32 reg;
+	int err;
+
+	reg = sdhci_readl(host, SDHCI_TEGRA_VENDOR_DLLCAL_CFG);
+	reg |= SDHCI_TEGRA_DLLCAL_CALIBRATE;
+	sdhci_writel(host, reg, SDHCI_TEGRA_VENDOR_DLLCAL_CFG);
+
+	/* 1 ms sleep, 5 ms timeout */
+	err = readl_poll_timeout(host->ioaddr + SDHCI_TEGRA_VENDOR_DLLCAL_STA,
+				 reg, !(reg & SDHCI_TEGRA_DLLCAL_STA_ACTIVE),
+				 1000, 5000);
+	if (err)
+		dev_err(mmc_dev(host->mmc),
+			"HS400 delay line calibration timed out\n");
+}
+
 static void tegra_sdhci_set_uhs_signaling(struct sdhci_host *host,
 					  unsigned timing)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_tegra *tegra_host = sdhci_pltfm_priv(pltfm_host);
 	bool set_default_tap = false;
+	bool set_dqs_trim = false;
+	bool do_hs400_dll_cal = false;
 
 	switch (timing) {
 	case MMC_TIMING_UHS_SDR50:
 	case MMC_TIMING_UHS_SDR104:
 	case MMC_TIMING_MMC_HS200:
-	case MMC_TIMING_MMC_HS400:
 		/* Don't set default tap on tunable modes. */
+		break;
+	case MMC_TIMING_MMC_HS400:
+		set_dqs_trim = true;
+		do_hs400_dll_cal = true;
 		break;
 	case MMC_TIMING_MMC_DDR52:
 	case MMC_TIMING_UHS_DDR50:
@@ -614,6 +683,12 @@ static void tegra_sdhci_set_uhs_signaling(struct sdhci_host *host,
 
 	if (set_default_tap)
 		tegra_sdhci_set_tap(host, tegra_host->default_tap);
+
+	if (set_dqs_trim)
+		tegra_sdhci_set_dqs_trim(host, tegra_host->dqs_trim);
+
+	if (do_hs400_dll_cal)
+		tegra_sdhci_hs400_dll_cal(host);
 }
 
 static int tegra_sdhci_execute_tuning(struct sdhci_host *host, u32 opcode)
@@ -970,6 +1045,9 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 				sdhci_tegra_start_signal_voltage_switch;
 	}
 
+	host->mmc_host_ops.hs400_enhanced_strobe =
+			tegra_sdhci_hs400_enhanced_strobe;
+
 	rc = mmc_of_parse(host->mmc);
 	if (rc)
 		goto err_parse_dt;
@@ -979,7 +1057,7 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 
 	tegra_sdhci_parse_pad_autocal_dt(host);
 
-	tegra_sdhci_parse_default_tap_and_trim(host);
+	tegra_sdhci_parse_tap_and_trim(host);
 
 	tegra_host->power_gpio = devm_gpiod_get_optional(&pdev->dev, "power",
 							 GPIOD_OUT_HIGH);
