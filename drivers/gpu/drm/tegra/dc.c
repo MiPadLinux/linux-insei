@@ -511,8 +511,7 @@ static void tegra_dc_setup_window(struct tegra_plane *plane,
 	if (dc->soc->has_legacy_blending)
 		tegra_plane_setup_blending_legacy(plane);
 	else
-		tegra_plane_setup_blending_legacy(plane); // for t124 and t210 platform need a legacy blending for fix inverted. Need to fix it.
-		//tegra_plane_setup_blending(plane, window);
+		tegra_plane_setup_blending(plane, window);
 }
 
 static const u32 tegra20_primary_formats[] = {
