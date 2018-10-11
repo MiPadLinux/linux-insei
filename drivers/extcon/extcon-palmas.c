@@ -107,7 +107,7 @@ src_again:
 		return ret;
 	}
 
-	dev_info(palmas_usb->dev, "id-state: 0x%02x\n", id_src);
+	dev_dbg(palmas_usb->dev, "id-state: 0x%02x\n", id_src);
 	if (!id_src) {
 		dev_err(palmas_usb->dev, "Improper ID state found\n");
 		if (retry--) {
@@ -119,7 +119,7 @@ src_again:
 
 	/* If two ID states show sign then allow debouncing to settle */
 	if (id_src & (id_src - 1)) {
-		dev_info(palmas_usb->dev,
+		dev_dbg(palmas_usb->dev,
 			"ID states are not settled, try later\n");
 		return -EAGAIN;
 	}
@@ -140,13 +140,13 @@ src_again:
 		new_state = PALMAS_USB_STATE_ID_FLOAT;
 		new_cable_index = -1;
 	} else {
-		dev_info(palmas_usb->dev, "ID_SRC is not valid\n");
+		dev_dbg(palmas_usb->dev, "ID_SRC is not valid\n");
 		new_state = PALMAS_USB_STATE_ID_FLOAT;
 		new_cable_index = 0;
 	}
 
 	if (palmas_usb->id_linkstat == new_state) {
-		dev_info(palmas_usb->dev,
+		dev_dbg(palmas_usb->dev,
 			"No change in ID state: Old %d and New %d\n",
 			palmas_usb->id_linkstat, new_state);
 		palmas_usb_id_int_set(palmas_usb);
@@ -154,7 +154,7 @@ src_again:
 	}
 
 	if (palmas_usb->cur_cable_index > 0) {
-		dev_info(palmas_usb->dev, "Cable %d detached\n",
+		dev_dbg(palmas_usb->dev, "Cable %d detached\n",
 			palmas_extcon_cable[palmas_usb->cur_cable_index]);
 		extcon_set_state_sync(palmas_usb->edev,
 			palmas_extcon_cable[palmas_usb->cur_cable_index],
@@ -162,7 +162,7 @@ src_again:
 	}
 
 	if ((new_cable_index < 0) && (!palmas_usb->cur_cable_index)) {
-		dev_info(palmas_usb->dev, "All cable detached\n");
+		dev_dbg(palmas_usb->dev, "All cable detached\n");
 		extcon_set_state_sync(palmas_usb->edev,
 					palmas_extcon_cable[1], false);
 		extcon_set_state_sync(palmas_usb->edev,
@@ -178,7 +178,7 @@ src_again:
 	if (palmas_usb->cur_cable_index <= 0)
 		goto end;
 
-	dev_info(palmas_usb->dev, "Cable %d attached\n",
+	dev_dbg(palmas_usb->dev, "Cable %d attached\n",
 		palmas_extcon_cable[palmas_usb->cur_cable_index]);
 	extcon_set_state_sync(palmas_usb->edev,
 			palmas_extcon_cable[palmas_usb->cur_cable_index], true);
@@ -211,13 +211,13 @@ static irqreturn_t palmas_vbus_irq_handler(int irq, void *_palmas_usb)
 	palmas_read(palmas_usb->palmas, PALMAS_INTERRUPT_BASE,
 		PALMAS_INT3_LINE_STATE, &vbus_line_state);
 
-	dev_info(palmas_usb->dev, "vbus-irq() INT3_LINE_STATE 0x%02x\n",
+	dev_dbg(palmas_usb->dev, "vbus-irq() INT3_LINE_STATE 0x%02x\n",
 			vbus_line_state);
 	if (vbus_line_state & PALMAS_INT3_LINE_STATE_VBUS) {
 		if (palmas_usb->vbus_linkstat != PALMAS_USB_STATE_VBUS) {
 			palmas_usb->vbus_linkstat = PALMAS_USB_STATE_VBUS;
 			extcon_set_state_sync(palmas_usb->edev, EXTCON_USB, true);
-			dev_info(palmas_usb->dev, "USB cable is attached\n");
+			dev_dbg(palmas_usb->dev, "USB cable is attached\n");
 			if (palmas_usb->enable_id_detect_on_vbus) {
 				queue_delayed_work(
 					system_power_efficient_wq, 
@@ -226,16 +226,16 @@ static irqreturn_t palmas_vbus_irq_handler(int irq, void *_palmas_usb)
 					  palmas_usb->cable_debounce_time));
 		    }
 		} else {
-			dev_info(palmas_usb->dev,
+			dev_dbg(palmas_usb->dev,
 				"Spurious connect event detected\n");
 		}
 	} else if (!(vbus_line_state & PALMAS_INT3_LINE_STATE_VBUS)) {
 		if (palmas_usb->vbus_linkstat == PALMAS_USB_STATE_VBUS) {
 			palmas_usb->vbus_linkstat = PALMAS_USB_STATE_DISCONNECT;
 			extcon_set_state_sync(palmas_usb->edev, EXTCON_USB, false);
-			dev_info(palmas_usb->dev, "USB cable is detached\n");
+			dev_dbg(palmas_usb->dev, "USB cable is detached\n");
 		} else {
-			dev_info(palmas_usb->dev,
+			dev_dbg(palmas_usb->dev,
 				"Spurious disconnect event detected\n");
 		}
 	}
@@ -460,7 +460,7 @@ static int palmas_usb_resume(struct device *dev)
 			(palmas_usb->vbus_linkstat == PALMAS_USB_STATE_VBUS)) {
 			palmas_usb->vbus_linkstat = PALMAS_USB_STATE_DISCONNECT;
 			extcon_set_state_sync(palmas_usb->edev, EXTCON_USB, false);
-				dev_info(palmas_usb->dev,
+				dev_dbg(palmas_usb->dev,
 					"%s():USB cable is detached\n", __func__);
 		}
 		enable_irq(palmas_usb->vbus_irq);
@@ -483,7 +483,9 @@ static const struct dev_pm_ops palmas_pm_ops = {
 
 static struct of_device_id of_palmas_match_tbl[] = {
 	{ .compatible = "ti,palmas-usb", },
+	{ .compatible = "ti,palmas-usb-vid", },
 	{ .compatible = "ti,twl6035-usb", },
+	{ .compatible = "ti,twl6035-usb-vid", },
 	{ /* end */ }
 };
 
