@@ -116,9 +116,10 @@ static int palmas_gpio_output(struct gpio_chip *gc, unsigned offset,
 int tps6591x_gpio7_enable(bool enable)
 {
 	if (enable)
-		palmas_gpio_output(&tps65910_gpio->gpio_chip, 0x8, 1);
+		palmas_gpio_output(&tps65910_gpio->gpio_chip, 7, 1);
 	else
-		palmas_gpio_output(&tps65910_gpio->gpio_chip, 0x8, 0);
+		palmas_gpio_output(&tps65910_gpio->gpio_chip, 7, 0);
+
  	return 0;
 }
 
