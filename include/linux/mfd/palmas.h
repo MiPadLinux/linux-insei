@@ -58,9 +58,14 @@ struct palmas_pmic_driver_data;
 struct palmas_pmic_platform_data;
 
 enum palmas_usb_state {
+	PALMAS_USB_STATE_INIT,
 	PALMAS_USB_STATE_DISCONNECT,
+	PALMAS_USB_STATE_ID_FLOAT = PALMAS_USB_STATE_DISCONNECT,
 	PALMAS_USB_STATE_VBUS,
-	PALMAS_USB_STATE_ID,
+	PALMAS_USB_STATE_ID_GND,
+	PALMAS_USB_STATE_ID_A,
+	PALMAS_USB_STATE_ID_B,
+	PALMAS_USB_STATE_ID_C,
 };
 
 struct palmas {
@@ -347,6 +352,9 @@ struct palmas_pmic_platform_data {
 };
 
 struct palmas_usb_platform_data {
+	const char *connection_name;
+	bool enable_vbus_detection;
+	bool enable_id_pin_detection;
 	/* Do we enable the wakeup comparator on probe */
 	int wakeup;
 };
@@ -581,19 +589,15 @@ struct palmas_usb {
 	int vbus_otg_irq;
 	int vbus_irq;
 
-	int gpio_id_irq;
-	int gpio_vbus_irq;
-	struct gpio_desc *id_gpiod;
-	struct gpio_desc *vbus_gpiod;
-	unsigned long sw_debounce_jiffies;
-	struct delayed_work wq_detectid;
-
-	enum palmas_usb_state linkstat;
+	enum palmas_usb_state id_linkstat;
+	enum palmas_usb_state vbus_linkstat;
 	int wakeup;
 	bool enable_vbus_detection;
 	bool enable_id_detection;
-	bool enable_gpio_id_detection;
-	bool enable_gpio_vbus_detection;
+	bool enable_id_detect_on_vbus;
+	struct delayed_work cable_update_wq;
+	int cable_debounce_time;
+	int cur_cable_index;
 };
 
 #define comparator_to_palmas(x) container_of((x), struct palmas_usb, comparator)
