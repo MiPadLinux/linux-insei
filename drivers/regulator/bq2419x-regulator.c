@@ -3,6 +3,7 @@
  *                     regulator driver
  *
  * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2018, Alexandrov.D  All rights reserved.
  *
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  *
@@ -37,6 +38,9 @@
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/power_supply.h>
+#include <linux/extcon.h>
+#include <linux/workqueue.h>
+#include <linux/notifier.h>
 
 /* Register definitions */
 #define BQ2419X_INPUT_SRC_REG                  0x00
@@ -107,23 +111,32 @@ enum regulator_id {
 };
 
 struct bq2419x_chip {
-       struct device                   *dev;
-       struct regmap                   *regmap;
-       int                             irq;
+	struct device                   *dev;
+	struct regmap                   *regmap;
+	int                             irq;
 
-       struct mutex                    mutex;
-       int                             otg_iusb_gpio;
-       int                             fast_charge_current_limit;
-       int                             max_in_voltage_limit;
-       int                             wdt_timeout;
-       int                             wdt_refresh_timeout;
-       struct delayed_work             bq_wdt_work;
+	struct mutex                    mutex;
+	int                             otg_iusb_gpio;
+	int                             fast_charge_current_limit;
+	int                             max_in_voltage_limit;
+	int                             wdt_timeout;
+	int                             wdt_refresh_timeout;
+	struct delayed_work             bq_wdt_work;
 
-	   struct device_node			   *vbus_np;
-	   struct device_node			   *chg_np;
-	   
-       struct regulator_dev            *chg_rdev;
-       struct regulator_dev            *vbus_rdev;
+	struct {
+		struct extcon_dev *edev;
+		bool connected;
+		bool is_otg;
+		const char *ext_name;
+		struct notifier_block nb;
+		struct work_struct work;
+	} cable;
+
+	struct device_node				*vbus_np;
+	struct regulator_dev			*vbus_rdev;
+
+	struct device_node				*chg_np;
+	struct regulator_dev            *chg_rdev;
 };
 
 static int bq2419x_set_charging_current(struct regulator_dev *rdev,
@@ -163,28 +176,34 @@ static struct of_regulator_match bq2419x_matches[] = {
 
 static int bq2419x_parse_dt_reg_data(struct bq2419x_chip *bq2419x)
 {
-       struct device_node *np = of_node_get(bq2419x->dev->of_node);
-       int ret;
-       u32 prop;
+	struct device_node *np = of_node_get(bq2419x->dev->of_node);
+	int ret;
+	u32 prop;
 
-       ret = of_property_read_u32(np, "ti,watchdog-timeout", &prop);
-       if (!ret)
-               bq2419x->wdt_timeout = prop;
+	ret = of_property_read_u32(np, "ti,watchdog-timeout", &prop);
+	if (!ret)
+		bq2419x->wdt_timeout = prop;
 
-       ret = of_property_read_u32(np, "ti,maximum-in-voltage-limit", &prop);
-       if (!ret)
-               bq2419x->max_in_voltage_limit = prop;
+	ret = of_property_read_u32(np, "ti,maximum-in-voltage-limit", &prop);
+	if (!ret)
+		bq2419x->max_in_voltage_limit = prop;
 
-       ret = of_property_read_u32(np, "ti,fast-charge-current-limit", &prop);
-       if (!ret)
-               bq2419x->fast_charge_current_limit = prop;
+	ret = of_property_read_u32(np, "ti,fast-charge-current-limit", &prop);
+	if (!ret)
+		bq2419x->fast_charge_current_limit = prop;
 
-       bq2419x->otg_iusb_gpio = of_get_named_gpio(np, "otg-iusb-gpio", 0);
-       if ((bq2419x->otg_iusb_gpio == -ENODEV) ||
-               (bq2419x->otg_iusb_gpio == -EPROBE_DEFER))
-               return -EPROBE_DEFER;
+	if (of_property_read_bool(np, "extcon")) {
+		bq2419x->cable.edev = extcon_get_edev_by_phandle(bq2419x->dev, 0);
+		if (IS_ERR(bq2419x->cable.edev) && PTR_ERR(bq2419x->cable.edev) != -ENODEV)
+			return PTR_ERR(bq2419x->cable.edev);
+	}
 
-       return 0;
+	bq2419x->otg_iusb_gpio = of_get_named_gpio(np, "otg-iusb-gpio", 0);
+	if ((bq2419x->otg_iusb_gpio == -ENODEV) ||
+		(bq2419x->otg_iusb_gpio == -EPROBE_DEFER))
+		return -EPROBE_DEFER;
+
+	return 0;
 }
 
 static int bq2419x_clear_hi_z(struct bq2419x_chip *bq2419x)
@@ -221,19 +240,19 @@ static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
 static int bq2419x_set_charging_enable(struct bq2419x_chip *bq2419x,
                bool enable)
 {
-       int ret;
-       int val = 0;
+	int ret;
+	int val = 0;
 
-       if (enable)
-               val = BQ2419X_PWR_ON_CHARGER_ENABLE;
-
-       ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
-                        BQ2419X_PWR_ON_CHARGER_MASK, val);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "PWR_ON_REG update failed %d\n", ret);
-               return ret;
-       }
-       return ret;
+	if (enable)
+		val = BQ2419X_PWR_ON_CHARGER_ENABLE;
+		
+	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
+					BQ2419X_PWR_ON_CHARGER_MASK, val);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "PWR_ON_REG update failed %d\n", ret);
+		return ret;
+	}
+	return ret;
 }
 
 static int bq2419x_charger_init_configure(struct bq2419x_chip *bq2419x)
@@ -302,13 +321,7 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
        if (max_uA == 0 && val != 0)
                return ret;
 
-       if (max_uA > 0)
-               tps6591x_gpio7_enable(0);
-       else
-               tps6591x_gpio7_enable(1);
-
-
-       ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
+	   ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
        if (ret < 0) {
                dev_err(bq2419x->dev, "Charger enable failed %d\n", ret);
                return ret;
@@ -467,83 +480,128 @@ static int bq2419x_reset_safety_timer(struct bq2419x_chip *bq2419x)
        return ret;
 }
 
+static int bq2419x_charger_handle_cable_evt(struct notifier_block *nb,
+					  unsigned long event, void *param)
+{
+	struct bq2419x_chip *bq2419x =
+	    container_of(nb, struct bq2419x_chip, cable.nb);
+	struct extcon_dev *edev = bq2419x->cable.edev;
+
+	if (event > 0) {
+		bq2419x->cable.connected = 1;
+		if (extcon_get_state(edev, EXTCON_USB) && !extcon_get_state(edev, EXTCON_USB_HOST)) {
+				dev_dbg(bq2419x->dev, "USB connected");
+		} else if (extcon_get_state(edev, EXTCON_USB_HOST)) {
+			bq2419x->cable.is_otg = true;
+			dev_dbg(bq2419x->dev, "USB-Host connected");
+			regulator_enable_regmap(bq2419x->vbus_rdev);
+		}
+	} else {
+		if (bq2419x->cable.connected && bq2419x->cable.is_otg) {
+			regulator_disable_regmap(bq2419x->vbus_rdev);
+			bq2419x->cable.is_otg = false;
+		}
+		dev_dbg(bq2419x->dev, "USB or USB-host disconnected");
+		bq2419x->cable.connected = 0;
+	}
+
+	return NOTIFY_OK;
+}
+
 static irqreturn_t bq2419x_irq(int irq, void *data)
 {
-       struct bq2419x_chip *bq2419x = data;
-       int ret;
-       unsigned int val;
-       int check_chg_state = 0;
+	struct bq2419x_chip *bq2419x = data;
+	int ret;
+	unsigned int val;
+	int check_chg_state = 0;
 
-       ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &val);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "FAULT_REG read failed %d\n", ret);
-               return ret;
-       }
+	ret = bq2419x_fault_clear_sts(bq2419x);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
+		return ret;
+	}
 
-       if (val & BQ2419x_FAULT_WATCHDOG_FAULT) {
-               dev_err(bq2419x->dev,
-                       "Charging Fault: Watchdog Timer Expired\n");
+	dev_dbg(bq2419x->dev, "%s() Irq %d status 0x%02x\n",
+		__func__, irq, val);
 
-               ret = bq2419x_watchdog_init(bq2419x, bq2419x->wdt_timeout);
-               if (ret < 0) {
-                       dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
-                       return ret;
-               }
+	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &val);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "FAULT_REG read failed %d\n", ret);
+		return ret;
+	}
 
-               ret = bq2419x_charger_init_configure(bq2419x);
-               if (ret < 0) {
-                       dev_err(bq2419x->dev, "Charger init failed %d\n", ret);
-                       return ret;
-               }
-       }
+	if (val & BQ2419x_FAULT_WATCHDOG_FAULT) {
+		dev_err(bq2419x->dev,
+			   "Charging Fault: Watchdog Timer Expired\n");
 
-       if (val & BQ2419x_FAULT_BOOST_FAULT)
-               dev_err(bq2419x->dev, "Charging Fault: VBUS Overloaded\n");
+		ret = bq2419x_watchdog_init(bq2419x, bq2419x->wdt_timeout);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
+			return ret;
+		}
 
-       switch (val & BQ2419x_FAULT_CHRG_FAULT_MASK) {
-       case BQ2419x_FAULT_CHRG_INPUT:
-               dev_err(bq2419x->dev,
-                       "Charging Fault: VBUS OVP or VBAT<VBUS<3.8V\n");
-               break;
-       case BQ2419x_FAULT_CHRG_THERMAL:
-               dev_err(bq2419x->dev, "Charging Fault: Thermal shutdown\n");
-               check_chg_state = 1;
-               break;
-       case BQ2419x_FAULT_CHRG_SAFTY:
-               dev_err(bq2419x->dev,
-                       "Charging Fault: Safety timer expiration\n");
-               ret = bq2419x_reset_safety_timer(bq2419x);
-               if (ret < 0) {
-                       dev_err(bq2419x->dev, "Reset safety timer failed %d\n",
-                                                       ret);
-                       return ret;
-               }
-               break;
-       default:
-               break;
-       }
+		ret = bq2419x_charger_init_configure(bq2419x);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "Charger init failed %d\n", ret);
+			return ret;
+		}
+	}
 
-       if (val & BQ2419x_FAULT_NTC_FAULT)
-               dev_err(bq2419x->dev, "Charging Fault: NTC fault %d\n",
-                               val & BQ2419x_FAULT_NTC_FAULT);
+	if (val & BQ2419x_FAULT_BOOST_FAULT)
+		dev_err(bq2419x->dev, "Charging Fault: VBUS Overloaded\n");
 
-       ret = bq2419x_fault_clear_sts(bq2419x);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
-               return ret;
-       }
+	switch (val & BQ2419x_FAULT_CHRG_FAULT_MASK) {
+	case BQ2419x_FAULT_CHRG_INPUT:
+		dev_err(bq2419x->dev,
+			   "Charging Fault: VBUS OVP or VBAT<VBUS<3.8V\n");
+		break;
+	case BQ2419x_FAULT_CHRG_THERMAL:
+		dev_err(bq2419x->dev, "Charging Fault: Thermal shutdown\n");
+		check_chg_state = 1;
+		break;
+	case BQ2419x_FAULT_CHRG_SAFTY:
+		dev_err(bq2419x->dev,
+			   "Charging Fault: Safety timer expiration\n");
+		ret = bq2419x_reset_safety_timer(bq2419x);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "Reset safety timer failed %d\n",
+										   ret);
+			return ret;
+		}
+		break;
+	default:
+		break;
+	}
 
-       ret = regmap_read(bq2419x->regmap, BQ2419X_SYS_STAT_REG, &val);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "SYS_STAT_REG read failed %d\n", ret);
-               return ret;
-       }
+	if (val & BQ2419x_FAULT_NTC_FAULT)
+		   dev_err(bq2419x->dev, "Charging Fault: NTC fault %d\n",
+						   val & BQ2419x_FAULT_NTC_FAULT);
 
-       if ((val & BQ2419x_SYS_STAT_CHRG_STATE_MASK) ==
-                               BQ2419x_SYS_STAT_CHRG_STATE_CHARGE_DONE)
-               dev_info(bq2419x->dev, "Charging completed\n");
 
-       return IRQ_HANDLED;
+	if (val & BQ2419x_FAULT_NTC_FAULT)
+		dev_err(bq2419x->dev, "Charging Fault: NTC fault %d\n",
+					   val & BQ2419x_FAULT_NTC_FAULT);
+
+	ret = bq2419x_fault_clear_sts(bq2419x);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
+		return ret;
+	}
+
+	ret = regmap_read(bq2419x->regmap, BQ2419X_SYS_STAT_REG, &val);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "SYS_STAT_REG read failed %d\n", ret);
+		return ret;
+	}
+
+	if ((val & BQ2419x_SYS_STAT_CHRG_STATE_MASK) ==
+						   BQ2419x_SYS_STAT_CHRG_STATE_CHARGE_DONE)
+		dev_info(bq2419x->dev, "Charging completed\n");
+
+	if(bq2419x->cable.connected && !bq2419x->cable.is_otg)
+			bq2419x_set_charging_current(bq2419x->chg_rdev, 500000, 1200000);
+
+	return IRQ_HANDLED;
 }
 
 static int bq2419x_get_charger_regulator(struct i2c_client *client, struct bq2419x_chip *bq2419x)
@@ -693,117 +751,131 @@ static const struct regmap_config bq2419x_regmap_config = {
 static int bq2419x_probe(struct i2c_client *client,
                                const struct i2c_device_id *id)
 {
-       struct bq2419x_chip *bq2419x;
-       int ret = 0;
+	struct bq2419x_chip *bq2419x;
+	int i, ret = 0;
+	unsigned int cable_ids[] = { EXTCON_USB, EXTCON_USB_HOST};
 
-       if (!client->dev.of_node) {
-               dev_err(&client->dev, "Driver only supported from DT\n");
-               return -ENODEV;
-       }
-
-
-       bq2419x = devm_kzalloc(&client->dev, sizeof(*bq2419x), GFP_KERNEL);
-       if (!bq2419x) {
-               dev_err(&client->dev, "Memory allocation failed\n");
-               return -ENOMEM;
-       }
-
-       bq2419x->dev = &client->dev;
-       bq2419x->irq = client->irq;
-
-       ret = bq2419x_parse_dt_reg_data(bq2419x);
-       if (ret < 0) {
-               dev_err(&client->dev, "DT parsing failed %d\n", ret);
-               return ret;
-       }
-
-       bq2419x->regmap = devm_regmap_init_i2c(client, &bq2419x_regmap_config);
-       if (IS_ERR(bq2419x->regmap)) {
-               ret = PTR_ERR(bq2419x->regmap);
-               dev_err(&client->dev, "regmap init failed %d\n", ret);
-               return ret;
-       }
+	if (!client->dev.of_node) {
+		dev_err(&client->dev, "Driver only supported from DT\n");
+		return -ENODEV;
+	}
 
 
-       i2c_set_clientdata(client, bq2419x);
-       mutex_init(&bq2419x->mutex);
+	bq2419x = devm_kzalloc(&client->dev, sizeof(*bq2419x), GFP_KERNEL);
+	if (!bq2419x) {
+		dev_err(&client->dev, "Memory allocation failed\n");
+		return -ENOMEM;
+	}
 
-       ret = bq2419x_show_chip_version(bq2419x);
-       if (ret < 0) {
-               dev_err(&client->dev, "version read failed %d\n", ret);
-               goto scrub_mutex;
-       }
+	bq2419x->dev = &client->dev;
+	bq2419x->irq = client->irq;
 
-       ret = bq2419x_charger_init_configure(bq2419x);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "Charger init failed %d\n", ret);
-               goto scrub_mutex;
-       }
+	ret = bq2419x_parse_dt_reg_data(bq2419x);
+	if (ret < 0) {
+		dev_err(&client->dev, "DT parsing failed %d\n", ret);
+		return ret;
+	}
 
-       ret = bq2419x_watchdog_init(bq2419x, bq2419x->wdt_timeout);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
-               goto scrub_mutex;
-       }
+	bq2419x->regmap = devm_regmap_init_i2c(client, &bq2419x_regmap_config);
+	if (IS_ERR(bq2419x->regmap)) {
+		ret = PTR_ERR(bq2419x->regmap);
+		dev_err(&client->dev, "regmap init failed %d\n", ret);
+		return ret;
+	}
 
-	   ret = bq2419x_get_vbus_regulator(client, bq2419x);
-	   if (ret < 0) {
-			   dev_err(&client->dev, "Can't parse vbus regulator\n");
-			   return -EINVAL;
-	   }
+	i2c_set_clientdata(client, bq2419x);
+	mutex_init(&bq2419x->mutex);
 
-       ret = bq2419x_init_vbus_regulator(bq2419x);
-       if (ret < 0) {
-               dev_err(&client->dev, "VBUS regualtor init failed %d\n", ret);
-               goto scrub_mutex;
-       }
+	if (!IS_ERR(bq2419x->cable.edev)) {
+		/* Register for extcon notification */
+		bq2419x->cable.nb.notifier_call = bq2419x_charger_handle_cable_evt;
+		for (i = 0; i < ARRAY_SIZE(cable_ids); i++) {
+			ret = devm_extcon_register_notifier(bq2419x->dev, bq2419x->cable.edev,
+							cable_ids[i], &bq2419x->cable.nb);
+			if (ret) {
+				dev_err(bq2419x->dev, "failed to register extcon notifier for %u: %d\n",
+					cable_ids[i], ret);
+				return ret;
+			}
+		}
+	}
 
-	   ret = bq2419x_get_charger_regulator(client, bq2419x);
-	   if (ret < 0) {
-			   dev_err(&client->dev, "Can't parse charger regulator\n");
-			   return -EINVAL;
-	   }
+	ret = bq2419x_show_chip_version(bq2419x);
+	if (ret < 0) {
+		dev_err(&client->dev, "version read failed %d\n", ret);
+		goto scrub_mutex;
+	}
 
-       ret = bq2419x_init_charger_regulator(bq2419x);
-       if (ret < 0) {
-               dev_err(&client->dev, "Charger regualtor init failed %d\n",
-                       ret);
-               goto scrub_vbus_reg;
-       }
+	ret = bq2419x_charger_init_configure(bq2419x);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "Charger init failed %d\n", ret);
+		goto scrub_mutex;
+	}
 
-       ret = bq2419x_fault_clear_sts(bq2419x);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
-               goto scrub_chg_reg;
-       }
+	ret = bq2419x_watchdog_init(bq2419x, bq2419x->wdt_timeout);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
+		goto scrub_mutex;
+	}
 
-       if (bq2419x->wdt_timeout) {
-               INIT_DELAYED_WORK(&bq2419x->bq_wdt_work,
-                                               bq2419x_reset_wdt_work);
-               schedule_delayed_work(&bq2419x->bq_wdt_work,
-                       msecs_to_jiffies(bq2419x->wdt_refresh_timeout * 1000));
-       }
+	ret = bq2419x_get_vbus_regulator(client, bq2419x);
+	if (ret < 0) {
+		dev_err(&client->dev, "Can't parse vbus regulator\n");
+		return -EINVAL;
+	}
 
-       ret = devm_request_threaded_irq(bq2419x->dev, bq2419x->irq, NULL,
-               bq2419x_irq, IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
-                       dev_name(bq2419x->dev), bq2419x);
-       if (ret < 0) {
-               dev_err(bq2419x->dev, "request IRQ %d failed %d\n",
-                               bq2419x->irq, ret);
-               goto scrub_wq;
-       }
+	ret = bq2419x_init_vbus_regulator(bq2419x);
+	if (ret < 0) {
+		dev_err(&client->dev, "VBUS regualtor init failed %d\n", ret);
+		goto scrub_mutex;
+	}
 
-       return 0;
+	ret = bq2419x_get_charger_regulator(client, bq2419x);
+	if (ret < 0) {
+		dev_err(&client->dev, "Can't parse charger regulator\n");
+		return -EINVAL;
+	}
+
+	ret = bq2419x_init_charger_regulator(bq2419x);
+	if (ret < 0) {
+		dev_err(&client->dev, "Charger regualtor init failed %d\n",
+			   ret);
+		goto scrub_vbus_reg;
+	}
+
+	ret = bq2419x_fault_clear_sts(bq2419x);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
+		goto scrub_chg_reg;
+	}
+
+	if (bq2419x->wdt_timeout) {
+		INIT_DELAYED_WORK(&bq2419x->bq_wdt_work,
+									   bq2419x_reset_wdt_work);
+		schedule_delayed_work(&bq2419x->bq_wdt_work,
+			   msecs_to_jiffies(bq2419x->wdt_refresh_timeout * 1000));
+	}
+
+	ret = devm_request_threaded_irq(bq2419x->dev, bq2419x->irq, NULL,
+		bq2419x_irq, IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
+			   dev_name(bq2419x->dev), bq2419x);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "request IRQ %d failed %d\n",
+					   bq2419x->irq, ret);
+		goto scrub_wq;
+	}
+
+	return 0;
 
 scrub_wq:
-       flush_work(&bq2419x->bq_wdt_work.work);
+	flush_work(&bq2419x->bq_wdt_work.work);
 scrub_chg_reg:
-       regulator_unregister(bq2419x->chg_rdev);
+	regulator_unregister(bq2419x->chg_rdev);
 scrub_vbus_reg:
-       regulator_unregister(bq2419x->vbus_rdev);
+	regulator_unregister(bq2419x->vbus_rdev);
 scrub_mutex:
-       mutex_destroy(&bq2419x->mutex);
-       return ret;
+	mutex_destroy(&bq2419x->mutex);
+	return ret;
 }
 
 static int bq2419x_remove(struct i2c_client *client)
