@@ -46,6 +46,7 @@
 			ti,watchdog-timeout = <40>;
             ti,maximum-in-voltage-limit = <4200>;
             ti,fast-charge-current-limit = <2500>;
+            extcon = <&palmas_extcon>;
 			reg = <0x6b>;
 
 
@@ -127,7 +128,6 @@
 
 			palmas_extcon: extcon {
 				compatible = "ti,palmas-usb-vid";
-				extcon-name = "palmas-extcon";
 				ti,wakeup;
 				#extcon-cells = <0x1>;
 				ti,enable-id-detection;
