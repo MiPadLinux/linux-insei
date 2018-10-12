@@ -29,6 +29,7 @@
 #include "tegra124-mocha-i2c.dtsi"
 #include "tegra124-mocha-display.dtsi"
 #include "tegra124-mocha-touchscreens.dtsi"
+#include "tegra124-mocha-usb.dtsi"
 
 / {
 	model = "NVIDIA Tegra124 MOCHA";

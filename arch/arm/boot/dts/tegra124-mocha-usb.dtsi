@@ -1,0 +1,59 @@
+/*
+ * arch/arm/boot/dts/tegra124-platforms/tegra124-mocha-usb.dtsi
+ *
+ * Copyright (c) 2018, Alexandrov Dmitry. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ */
+
+
+/ {
+	usb@70090000 {
+		phys = <&{/padctl@7009f000/pads/usb2/lanes/usb2-0}>; /* Micro A/B */
+		phy-names = "usb2-0";
+
+		avddio-pex-supply = <&palmas_smps10_out2>;
+		dvddio-pex-supply = <&palmas_smps10_out2>;
+		avdd-usb-supply = <&ldousb_reg>;
+		avdd-pll-utmip-supply = <&palmas_smps8>;
+		avdd-pll-erefe-supply = <&palmas_ldo1>;
+		avdd-usb-ss-pll-supply = <&palmas_ldo1>;
+		hvdd-usb-ss-supply = <&ldousb_reg>;
+		hvdd-usb-ss-pll-e-supply = <&ldousb_reg>;
+
+		status = "okay";
+	};
+
+	padctl@7009f000 {
+		status = "okay";
+
+		pads {
+			usb2 {
+				status = "okay";
+
+				lanes {
+					usb2-0 {
+						nvidia,function = "xusb";
+						status = "okay";
+					};
+				};
+			};
+		};
+
+		ports {
+			/* Micro A/B */
+			usb2-0 {
+				status = "okay";
+				mode = "otg";
+			};
+		};
+	};
+};
