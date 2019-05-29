@@ -3,10 +3,10 @@
 / {
 	pinmux: pinmux@70000868 {
 		status = "okay";
-		pinctrl-names = "bootloader";
-		pinctrl-0 = <&pinmux_boot>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinmux_default>;
 
-		pinmux_boot: pinmux {
+		pinmux_default: common {
 			dap_mclk1_pw4 {
 				nvidia,pins = "dap_mclk1_pw4";
 				nvidia,function = "extperiph1";
