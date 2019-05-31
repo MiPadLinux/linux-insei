@@ -111,7 +111,6 @@ CONFIG_KEYBOARD_TEGRA=y
 CONFIG_KEYBOARD_CROS_EC=y
 CONFIG_MOUSE_PS2_ELANTECH=y
 CONFIG_INPUT_TOUCHSCREEN=y
-CONFIG_TOUCHSCREEN_ATMEL_MXT=y
 CONFIG_TOUCHSCREEN_WM97XX=y
 CONFIG_TOUCHSCREEN_STMPE=y
 CONFIG_INPUT_MISC=y
@@ -312,7 +311,7 @@ CONFIG_DYNAMIC_DEBUG=y
 
 # Firmware
 CONFIG_FIRMWARE_IN_KERNEL=y
-CONFIG_EXTRA_FIRMWARE="nvidia/tegra124/xusb.bin nvidia/tegra124/vic.bin nvidia/gk20a/fecs_data.bin nvidia/gk20a/fecs_inst.bin nvidia/gk20a/gpccs_data.bin nvidia/gk20a/gpccs_inst.bin nvidia/gk20a/sw_bundle_init.bin nvidia/gk20a/sw_method_init.bin nvidia/gk20a/sw_ctx.bin nvidia/gk20a/sw_nonctx.bin brcm/brcmfmac4354-sdio.bin brcm/brcmfmac4354-sdio.txt"
+CONFIG_EXTRA_FIRMWARE="nvidia/tegra124/xusb.bin nvidia/tegra124/vic.bin nvidia/gk20a/fecs_data.bin nvidia/gk20a/fecs_inst.bin nvidia/gk20a/gpccs_data.bin nvidia/gk20a/gpccs_inst.bin nvidia/gk20a/sw_bundle_init.bin nvidia/gk20a/sw_method_init.bin nvidia/gk20a/sw_ctx.bin nvidia/gk20a/sw_nonctx.bin brcm/brcmfmac4354-sdio.bin brcm/brcmfmac4354-sdio.txt atmel/mxt1066t.fw atmel/mxt1664t.fw atmel/mxt1066t_config.fw atmel/mxt1664t_config_no_dummy.fw atmel/mxt1664t_config_with_dummy.fw"
 CONFIG_EXTRA_FIRMWARE_DIR="lib/firmware"
 
 # PSCI
@@ -348,7 +347,8 @@ CONFIG_DRM_PANEL_SHARP_LQ079L1SX01=y
 CONFIG_BACKLIGHT_LCD_SUPPORT=y
 CONFIG_BACKLIGHT_LP855X=y
 
-# Touchscreen's
+# Touchscreens
+CONFIG_TOUCHSCREEN_ATMEL_MXT_MOCHA=y
 CONFIG_TOUCHSCREEN_SYNAPTICS_DSX=y
 CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_I2C=y
 CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_CORE=y
