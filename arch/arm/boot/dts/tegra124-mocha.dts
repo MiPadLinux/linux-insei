@@ -155,4 +155,17 @@
 			};
 		};
 	};
+
+	i2c@7000c000 {
+		tfa9890@34 {
+			compatible = "nxp,tfa9890";
+			reg = <0x34>;
+		};
+
+		tfa9890@37 {
+			compatible = "nxp,tfa9890";
+			reg = <0x37>;
+		};
+
+	};
 };
