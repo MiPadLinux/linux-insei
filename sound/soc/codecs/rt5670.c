@@ -16,6 +16,8 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/i2c.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/acpi.h>
 #include <linux/spi/spi.h>
@@ -2794,6 +2796,7 @@ MODULE_DEVICE_TABLE(of, rt5640_of_match);
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id rt5670_acpi_match[] = {
 	{ "10EC5670", 0},
+	{ "10EC5671", 0},
 	{ "10EC5672", 0},
 	{ "10EC5640", 0}, /* quirk */
 	{ },
@@ -2895,6 +2898,29 @@ static const struct dmi_system_id dmi_platform_intel_quirks[] = {
 	{}
 };
 
+static int rt5670_parse_dt(struct rt5670_priv *rt5670, struct device_node *np)
+{
+	//u32 val32[4];
+
+	of_property_read_u32(np, "realtek,jd_mode", &rt5670->pdata.jd_mode);
+
+	rt5670->pdata.dev_gpio = of_get_named_gpio(np, "realtek,dev_gpio", 0);
+	if (!gpio_is_valid(rt5670->pdata.dev_gpio))
+		pr_err("Failed to get DEVICE GPIO\n");
+
+	of_property_read_u32(np, "realtek,in2_diff", (unsigned int *) &rt5670->pdata.in2_diff);
+//	of_property_read_u32(np, "realtek,in3_diff", (unsigned int *) &rt5671->pdata.in3_diff);
+//	of_property_read_u32(np, "realtek,in4_diff", (unsigned int *) &rt5671->pdata.in4_diff);
+
+//	of_property_read_u32_array(np, "realtek,bclk_32fs", val32, ARRAY_SIZE(val32));
+//      rt5671->pdata.bclk_32fs[0] = val32[0];
+//      rt5671->pdata.bclk_32fs[1] = val32[1];
+//      rt5671->pdata.bclk_32fs[2] = val32[2];
+//      rt5671->pdata.bclk_32fs[3] = val32[3];
+
+	return 0;
+}
+
 static int rt5670_i2c_probe(struct i2c_client *i2c,
 		    const struct i2c_device_id *id)
 {
@@ -2913,6 +2939,8 @@ static int rt5670_i2c_probe(struct i2c_client *i2c,
 
 	if (pdata)
 		rt5670->pdata = *pdata;
+	else
+		rt5670_parse_dt(rt5670, i2c->dev.of_node);
 
 	dmi_check_system(dmi_platform_intel_quirks);
 	if (quirk_override) {
@@ -2979,12 +3007,12 @@ static int rt5670_i2c_probe(struct i2c_client *i2c,
 		return ret;
 	}
 
-	regmap_read(rt5670->regmap, RT5670_VENDOR_ID2, &val);
+	/*regmap_read(rt5670->regmap, RT5670_VENDOR_ID2, &val);
 	if (val != RT5670_DEVICE_ID) {
 		dev_err(&i2c->dev,
 			"Device with ID register %#x is not rt5670/72\n", val);
 		return -ENODEV;
-	}
+	}*/
 
 	regmap_write(rt5670->regmap, RT5670_RESET, 0);
 	regmap_update_bits(rt5670->regmap, RT5670_PWR_ANLG1,

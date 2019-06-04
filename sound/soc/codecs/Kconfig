@@ -954,7 +954,7 @@ config SND_SOC_RT5668
 	tristate
 
 config SND_SOC_RT5670
-	tristate
+	tristate "Realtek RT567x driver"
 
 config SND_SOC_RT5677
 	tristate

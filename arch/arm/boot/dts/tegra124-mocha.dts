@@ -157,6 +157,18 @@
 	};
 
 	i2c@7000c000 {
+		rt5671: rt5671@1c {
+			compatible = "realtek,rt5671";
+			reg = <0x1c>;
+
+	                realtek,jd_mode = <2>;
+	                realtek,dev_gpio = <&gpio 178 0>;
+	                realtek,in2_diff = <1>;
+	                realtek,in3_diff = <0>;
+	                realtek,in4_diff = <1>;
+	                realtek,bclk_32fs = <0 1 1 1>;
+		};
+
 		tfa9890@34 {
 			compatible = "nxp,tfa9890";
 			reg = <0x34>;
@@ -167,5 +179,27 @@
 			reg = <0x37>;
 		};
 
+	};
+
+	sound {
+		compatible = "nvidia,tegra-audio-rt5671";
+		nvidia,model = "Xiaomi MiPad";
+
+		nvidia,audio-routing =
+			"Headphones", "HPOR",
+			"Headphones", "HPOL",
+			"Mic Jack", "MICBIAS1",
+			"IN2P", "Mic Jack";
+
+		nvidia,i2s-controller = <&tegra_i2s1>;
+		nvidia,audio-codec = <&rt5671>;
+
+		nvidia,hp-det-gpios = <&gpio TEGRA_GPIO(R, 7) GPIO_ACTIVE_LOW>;
+
+		clocks = <&tegra_car TEGRA124_CLK_PLL_A>,
+			 <&tegra_car TEGRA124_CLK_PLL_A_OUT0>,
+			 <&tegra_car TEGRA124_CLK_EXTERN1>,
+			 <&tegra_car TEGRA124_CLK_EMC>;
+		clock-names = "pll_a", "pll_a_out0", "mclk", "emc";
 	};
 };
