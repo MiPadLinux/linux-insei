@@ -107,19 +107,23 @@
 
 	cpus {
 		cpu@0 {
+			compatible = "arm,cortex-a15";
 			vdd-cpu-supply = <&vdd_cpu>;
 			enable-method = "psci";
 		};
 
 		cpu@1 {
+			compatible = "arm,cortex-a15";
 			enable-method = "psci";
 		};
 
 		cpu@2 {
+			compatible = "arm,cortex-a15";
 			enable-method = "psci";
 		};
 
 		cpu@3 {
+			compatible = "arm,cortex-a15";
 			enable-method = "psci";
 		};
 	};
