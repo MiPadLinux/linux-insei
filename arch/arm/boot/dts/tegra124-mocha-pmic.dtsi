@@ -41,13 +41,13 @@
 
 		bq2419x: bq2419x@6b {
 			compatible = "ti,bq2419x";
+			reg = <0x6b>;
 			interrupt-parent = <&gpio>;
 			interrupts = <72 IRQ_TYPE_LEVEL_HIGH>;
 			ti,watchdog-timeout = <40>;
-            ti,maximum-in-voltage-limit = <4200>;
-            ti,fast-charge-current-limit = <2500>;
-            extcon = <&palmas_extcon>;
-			reg = <0x6b>;
+            		ti,maximum-in-voltage-limit = <4200>;
+            		ti,fast-charge-current-limit = <2500>;
+            		extcon = <&palmas_extcon>;
 
 
 			battery_charger: charger {
@@ -59,7 +59,7 @@
 			usb0_vbus_reg: vbus {
 				regulator-name = "vbus";
 				regulator-min-microvolt = <0>;
-                regulator-max-microvolt = <5000000>;
+                		regulator-max-microvolt = <5000000>;
 			};
 		};
 	};
