@@ -126,6 +126,15 @@
 				};
 			};
 
+			gpadc {
+				compatible = "ti,palmas-gpadc";
+				interrupt-parent = <&palmas>;
+				interrupts = <18 0
+					      16 0
+					      17 0>;
+				ti,channel0-current-microamp = <20>;
+			};
+
 			palmas_extcon: extcon {
 				compatible = "ti,palmas-usb-vid";
 				ti,wakeup;
