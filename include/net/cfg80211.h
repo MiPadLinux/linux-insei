@@ -5944,6 +5944,13 @@ struct sk_buff *__cfg80211_alloc_reply_skb(struct wiphy *wiphy,
 					   enum nl80211_attrs attr,
 					   int approxlen);
 
+struct sk_buff *__cfg80211_alloc_event_net_skb(struct net_device *ndev,
+					   struct wiphy *wiphy,
+					   enum nl80211_commands cmd,
+					   enum nl80211_attrs attr,
+					   int vendor_event_idx,
+					   int approxlen, gfp_t gfp);
+
 struct sk_buff *__cfg80211_alloc_event_skb(struct wiphy *wiphy,
 					   struct wireless_dev *wdev,
 					   enum nl80211_commands cmd,
@@ -6070,6 +6077,15 @@ cfg80211_vendor_event_alloc_ucast(struct wiphy *wiphy,
 	return __cfg80211_alloc_event_skb(wiphy, wdev, NL80211_CMD_VENDOR,
 					  NL80211_ATTR_VENDOR_DATA,
 					  portid, event_idx, approxlen, gfp);
+}
+
+static inline struct sk_buff *
+cfg80211_vendor_event_skb_alloc(struct net_device *ndev, struct wiphy *wiphy, int approxlen,
+			    int event_idx, gfp_t gfp)
+{
+	return __cfg80211_alloc_event_net_skb(ndev, wiphy, NL80211_CMD_VENDOR,
+					  NL80211_ATTR_VENDOR_DATA,
+					  event_idx, approxlen, gfp);
 }
 
 /**
