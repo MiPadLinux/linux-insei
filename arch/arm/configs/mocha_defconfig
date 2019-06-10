@@ -311,7 +311,7 @@ CONFIG_DYNAMIC_DEBUG=y
 
 # Firmware
 CONFIG_FIRMWARE_IN_KERNEL=y
-CONFIG_EXTRA_FIRMWARE="nvidia/tegra124/xusb.bin nvidia/tegra124/vic.bin nvidia/gk20a/fecs_data.bin nvidia/gk20a/fecs_inst.bin nvidia/gk20a/gpccs_data.bin nvidia/gk20a/gpccs_inst.bin nvidia/gk20a/sw_bundle_init.bin nvidia/gk20a/sw_method_init.bin nvidia/gk20a/sw_ctx.bin nvidia/gk20a/sw_nonctx.bin brcm/brcmfmac4354-sdio.bin brcm/brcmfmac4354-sdio.txt atmel/mxt1066t.fw atmel/mxt1664t.fw atmel/mxt1066t_config.fw atmel/mxt1664t_config_no_dummy.fw atmel/mxt1664t_config_with_dummy.fw"
+CONFIG_EXTRA_FIRMWARE="nvidia/tegra124/xusb.bin nvidia/tegra124/vic.bin nvidia/gk20a/fecs_data.bin nvidia/gk20a/fecs_inst.bin nvidia/gk20a/gpccs_data.bin nvidia/gk20a/gpccs_inst.bin nvidia/gk20a/sw_bundle_init.bin nvidia/gk20a/sw_method_init.bin nvidia/gk20a/sw_ctx.bin nvidia/gk20a/sw_nonctx.bin brcm/brcmfmac4354-sdio.bin brcm/brcmfmac4354-sdio.txt brcm/brcmfmac4354-sdio.mocha.txt brcm/BCM4354.hcd atmel/mxt1066t.fw atmel/mxt1664t.fw atmel/mxt1066t_config.fw atmel/mxt1664t_config_no_dummy.fw atmel/mxt1664t_config_with_dummy.fw"
 CONFIG_EXTRA_FIRMWARE_DIR="lib/firmware"
 
 # PSCI
@@ -344,8 +344,18 @@ CONFIG_BCMDHD_SDIO=y
 CONFIG_BCM4354=y
 CONFIG_BCMDHD_HW_OOB=y
 CONFIG_BCMDHD_DISABLE_MCC=y
-# CONFIG_BRCMFMAC is not set
-# CONFIG_BRCMDBG is not set
+
+# Bluetooth
+CONFIG_BLUEDROID_PM=y
+CONFIG_BT_HCIUART_BCM=y
+CONFIG_SERIAL_DEV_BUS=y
+CONFIG_BT_HCIUART_SERDEV=y
+CONFIG_BT_BNEP_MC_FILTER=y
+CONFIG_BT_BNEP_PROTO_FILTER=y
+CONFIG_BT_RFCOMM_TTY=y
+CONFIG_BT_HCIUART=y
+CONFIG_BT_HCIUART_H4=y
+CONFIG_BT_HCIBTSDIO=y
 
 # Panel
 CONFIG_DRM_PANEL_SHARP_LQ079L1SX01=y
