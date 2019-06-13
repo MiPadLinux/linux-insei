@@ -66,6 +66,13 @@
 	serial@70006200 {
 		compatible = "nvidia,tegra124-uart", "nvidia,tegra30-hsuart";
 		status = "okay";
+
+		bluetooth {
+			compatible = "brcm,bcm4354-bt";
+			shutdown-gpios = <&gpio TEGRA_GPIO(R, 1) 0>;
+			host-wakeup-gpios = <&gpio TEGRA_GPIO(U, 6) 0>;
+			device-wakeup-gpios = <&gpio TEGRA_GPIO(EE, 1) 0>;
+		};
 	};
 
 	serial@70006300 {
