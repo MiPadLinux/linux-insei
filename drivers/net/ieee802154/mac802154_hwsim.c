@@ -1,17 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * HWSIM IEEE 802.15.4 interface
  *
  * (C) 2018 Mojatau, Alexander Aring <aring@mojatau.com>
  * Copyright 2007-2012 Siemens AG
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * Based on fakelb, original Written by:
  * Sergey Lapin <slapin@ossfans.org>
@@ -591,7 +583,7 @@ static const struct nla_policy hwsim_genl_policy[MAC802154_HWSIM_ATTR_MAX + 1] =
 };
 
 /* Generic Netlink operations array */
-static const struct genl_ops hwsim_nl_ops[] = {
+static const struct genl_small_ops hwsim_nl_ops[] = {
 	{
 		.cmd = MAC802154_HWSIM_CMD_NEW_RADIO,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
@@ -636,8 +628,8 @@ static struct genl_family hwsim_genl_family __ro_after_init = {
 	.maxattr = MAC802154_HWSIM_ATTR_MAX,
 	.policy = hwsim_genl_policy,
 	.module = THIS_MODULE,
-	.ops = hwsim_nl_ops,
-	.n_ops = ARRAY_SIZE(hwsim_nl_ops),
+	.small_ops = hwsim_nl_ops,
+	.n_small_ops = ARRAY_SIZE(hwsim_nl_ops),
 	.mcgrps = hwsim_mcgrps,
 	.n_mcgrps = ARRAY_SIZE(hwsim_mcgrps),
 };
@@ -810,7 +802,7 @@ static int hwsim_add_one(struct genl_info *info, struct device *dev,
 		err = hwsim_subscribe_all_others(phy);
 		if (err < 0) {
 			mutex_unlock(&hwsim_phys_lock);
-			goto err_reg;
+			goto err_subscribe;
 		}
 	}
 	list_add_tail(&phy->list, &hwsim_phys);
@@ -820,6 +812,8 @@ static int hwsim_add_one(struct genl_info *info, struct device *dev,
 
 	return idx;
 
+err_subscribe:
+	ieee802154_unregister_hw(phy->hw);
 err_reg:
 	kfree(pib);
 err_pib:
@@ -909,9 +903,9 @@ static __init int hwsim_init_module(void)
 	return 0;
 
 platform_drv:
-	genl_unregister_family(&hwsim_genl_family);
-platform_dev:
 	platform_device_unregister(mac802154hwsim_dev);
+platform_dev:
+	genl_unregister_family(&hwsim_genl_family);
 	return rc;
 }
 

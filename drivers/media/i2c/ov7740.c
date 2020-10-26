@@ -532,7 +532,7 @@ static int ov7740_set_ctrl(struct v4l2_ctrl *ctrl)
 	struct i2c_client *client = v4l2_get_subdevdata(&ov7740->subdev);
 	struct regmap *regmap = ov7740->regmap;
 	int ret;
-	u8 val = 0;
+	u8 val;
 
 	if (!pm_runtime_get_if_in_use(&client->dev))
 		return 0;
@@ -551,6 +551,7 @@ static int ov7740_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = ov7740_set_contrast(regmap, ctrl->val);
 		break;
 	case V4L2_CID_VFLIP:
+		val = ctrl->val ? REG0C_IMG_FLIP : 0x00;
 		ret = regmap_update_bits(regmap, REG_REG0C,
 					 REG0C_IMG_FLIP, val);
 		break;
@@ -561,16 +562,16 @@ static int ov7740_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_AUTOGAIN:
 		if (!ctrl->val)
-			return ov7740_set_gain(regmap, ov7740->gain->val);
-
-		ret = ov7740_set_autogain(regmap, ctrl->val);
+			ret = ov7740_set_gain(regmap, ov7740->gain->val);
+		else
+			ret = ov7740_set_autogain(regmap, ctrl->val);
 		break;
 
 	case V4L2_CID_EXPOSURE_AUTO:
 		if (ctrl->val == V4L2_EXPOSURE_MANUAL)
-			return ov7740_set_exp(regmap, ov7740->exposure->val);
-
-		ret = ov7740_set_autoexp(regmap, ctrl->val);
+			ret = ov7740_set_exp(regmap, ov7740->exposure->val);
+		else
+			ret = ov7740_set_autoexp(regmap, ctrl->val);
 		break;
 	default:
 		ret = -EINVAL;
@@ -785,7 +786,11 @@ static int ov7740_try_fmt_internal(struct v4l2_subdev *sd,
 
 		fsize++;
 	}
-
+	if (i >= ARRAY_SIZE(ov7740_framesizes)) {
+		fsize = &ov7740_framesizes[0];
+		fmt->width = fsize->width;
+		fmt->height = fsize->height;
+	}
 	if (ret_frmsize != NULL)
 		*ret_frmsize = fsize;
 
@@ -822,13 +827,9 @@ static int ov7740_set_fmt(struct v4l2_subdev *sd,
 #ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
 		mbus_fmt = v4l2_subdev_get_try_format(sd, cfg, format->pad);
 		*mbus_fmt = format->format;
-
+#endif
 		mutex_unlock(&ov7740->mutex);
 		return 0;
-#else
-		ret = -ENOTTY;
-		goto error;
-#endif
 	}
 
 	ret = ov7740_try_fmt_internal(sd, &format->format, &ovfmt, &fsize);
@@ -863,7 +864,7 @@ static int ov7740_get_fmt(struct v4l2_subdev *sd,
 		format->format = *mbus_fmt;
 		ret = 0;
 #else
-		ret = -ENOTTY;
+		ret = -EINVAL;
 #endif
 	} else {
 		format->format = ov7740->format;
@@ -1007,8 +1008,6 @@ static int ov7740_init_controls(struct ov7740 *ov7740)
 
 	ov7740->gain = v4l2_ctrl_new_std(ctrl_hdlr, &ov7740_ctrl_ops,
 				       V4L2_CID_GAIN, 0, 1023, 1, 500);
-	if (ov7740->gain)
-		ov7740->gain->flags |= V4L2_CTRL_FLAG_VOLATILE;
 
 	ov7740->auto_gain = v4l2_ctrl_new_std(ctrl_hdlr, &ov7740_ctrl_ops,
 					    V4L2_CID_AUTOGAIN, 0, 1, 1, 1);
@@ -1026,7 +1025,6 @@ static int ov7740_init_controls(struct ov7740 *ov7740)
 	v4l2_ctrl_auto_cluster(2, &ov7740->auto_gain, 0, true);
 	v4l2_ctrl_auto_cluster(2, &ov7740->auto_exposure,
 			       V4L2_EXPOSURE_MANUAL, true);
-	v4l2_ctrl_cluster(2, &ov7740->hflip);
 
 	if (ctrl_hdlr->error) {
 		ret = ctrl_hdlr->error;
@@ -1064,19 +1062,11 @@ static const struct regmap_config ov7740_regmap_config = {
 	.max_register	= OV7740_MAX_REGISTER,
 };
 
-static int ov7740_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int ov7740_probe(struct i2c_client *client)
 {
 	struct ov7740 *ov7740;
 	struct v4l2_subdev *sd;
 	int ret;
-
-	if (!i2c_check_functionality(client->adapter,
-				     I2C_FUNC_SMBUS_BYTE_DATA)) {
-		dev_err(&client->dev,
-			"OV7740: I2C-Adapter doesn't support SMBUS\n");
-		return -EIO;
-	}
 
 	ov7740 = devm_kzalloc(&client->dev, sizeof(*ov7740), GFP_KERNEL);
 	if (!ov7740)
@@ -1094,7 +1084,7 @@ static int ov7740_probe(struct i2c_client *client,
 	if (ret)
 		return ret;
 
-	ov7740->regmap = devm_regmap_init_i2c(client, &ov7740_regmap_config);
+	ov7740->regmap = devm_regmap_init_sccb(client, &ov7740_regmap_config);
 	if (IS_ERR(ov7740->regmap)) {
 		ret = PTR_ERR(ov7740->regmap);
 		dev_err(&client->dev, "Failed to allocate register map: %d\n",
@@ -1103,7 +1093,6 @@ static int ov7740_probe(struct i2c_client *client,
 	}
 
 	sd = &ov7740->subdev;
-	client->flags |= I2C_CLIENT_SCCB;
 	v4l2_i2c_subdev_init(sd, client, &ov7740_subdev_ops);
 
 #ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
@@ -1227,7 +1216,7 @@ static struct i2c_driver ov7740_i2c_driver = {
 		.pm = &ov7740_pm_ops,
 		.of_match_table = of_match_ptr(ov7740_of_match),
 	},
-	.probe    = ov7740_probe,
+	.probe_new = ov7740_probe,
 	.remove   = ov7740_remove,
 	.id_table = ov7740_id,
 };

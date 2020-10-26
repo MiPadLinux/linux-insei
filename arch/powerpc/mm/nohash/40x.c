@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * This file contains the routines for initializing the MMU
  * on the 4xx series of chips.
@@ -12,12 +13,6 @@
  *
  *  Derived from "arch/i386/mm/init.c"
  *    Copyright (C) 1991, 1992, 1993, 1994  Linus Torvalds
- *
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version
- *  2 of the License, or (at your option) any later version.
- *
  */
 
 #include <linux/signal.h>
@@ -37,11 +32,9 @@
 #include <linux/highmem.h>
 #include <linux/memblock.h>
 
-#include <asm/pgalloc.h>
 #include <asm/prom.h>
 #include <asm/io.h>
 #include <asm/mmu_context.h>
-#include <asm/pgtable.h>
 #include <asm/mmu.h>
 #include <linux/uaccess.h>
 #include <asm/smp.h>
@@ -107,9 +100,9 @@ unsigned long __init mmu_mapin_ram(unsigned long base, unsigned long top)
 
 	while (s >= LARGE_PAGE_SIZE_16M) {
 		pmd_t *pmdp;
-		unsigned long val = p | _PMD_SIZE_16M | _PAGE_EXEC | _PAGE_HWWRITE;
+		unsigned long val = p | _PMD_SIZE_16M | _PAGE_EXEC | _PAGE_RW;
 
-		pmdp = pmd_offset(pud_offset(pgd_offset_k(v), v), v);
+		pmdp = pmd_off_k(v);
 		*pmdp++ = __pmd(val);
 		*pmdp++ = __pmd(val);
 		*pmdp++ = __pmd(val);
@@ -122,9 +115,9 @@ unsigned long __init mmu_mapin_ram(unsigned long base, unsigned long top)
 
 	while (s >= LARGE_PAGE_SIZE_4M) {
 		pmd_t *pmdp;
-		unsigned long val = p | _PMD_SIZE_4M | _PAGE_EXEC | _PAGE_HWWRITE;
+		unsigned long val = p | _PMD_SIZE_4M | _PAGE_EXEC | _PAGE_RW;
 
-		pmdp = pmd_offset(pud_offset(pgd_offset_k(v), v), v);
+		pmdp = pmd_off_k(v);
 		*pmdp = __pmd(val);
 
 		v += LARGE_PAGE_SIZE_4M;

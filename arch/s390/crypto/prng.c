@@ -249,7 +249,7 @@ static void prng_tdes_deinstantiate(void)
 {
 	pr_debug("The prng module stopped "
 		 "after running in triple DES mode\n");
-	kzfree(prng_data);
+	kfree_sensitive(prng_data);
 }
 
 
@@ -442,7 +442,7 @@ outfree:
 static void prng_sha512_deinstantiate(void)
 {
 	pr_debug("The prng module stopped after running in SHA-512 mode\n");
-	kzfree(prng_data);
+	kfree_sensitive(prng_data);
 }
 
 
@@ -693,7 +693,7 @@ static ssize_t prng_chunksize_show(struct device *dev,
 				   struct device_attribute *attr,
 				   char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%u\n", prng_chunk_size);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", prng_chunk_size);
 }
 static DEVICE_ATTR(chunksize, 0444, prng_chunksize_show, NULL);
 
@@ -712,7 +712,7 @@ static ssize_t prng_counter_show(struct device *dev,
 		counter = prng_data->prngws.byte_counter;
 	mutex_unlock(&prng_data->mutex);
 
-	return snprintf(buf, PAGE_SIZE, "%llu\n", counter);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", counter);
 }
 static DEVICE_ATTR(byte_counter, 0444, prng_counter_show, NULL);
 
@@ -721,7 +721,7 @@ static ssize_t prng_errorflag_show(struct device *dev,
 				   struct device_attribute *attr,
 				   char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d\n", prng_errorflag);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", prng_errorflag);
 }
 static DEVICE_ATTR(errorflag, 0444, prng_errorflag_show, NULL);
 
@@ -731,9 +731,9 @@ static ssize_t prng_mode_show(struct device *dev,
 			      char *buf)
 {
 	if (prng_mode == PRNG_MODE_TDES)
-		return snprintf(buf, PAGE_SIZE, "TDES\n");
+		return scnprintf(buf, PAGE_SIZE, "TDES\n");
 	else
-		return snprintf(buf, PAGE_SIZE, "SHA512\n");
+		return scnprintf(buf, PAGE_SIZE, "SHA512\n");
 }
 static DEVICE_ATTR(mode, 0444, prng_mode_show, NULL);
 
@@ -756,7 +756,7 @@ static ssize_t prng_reseed_limit_show(struct device *dev,
 				      struct device_attribute *attr,
 				      char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%u\n", prng_reseed_limit);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", prng_reseed_limit);
 }
 static ssize_t prng_reseed_limit_store(struct device *dev,
 				       struct device_attribute *attr,
@@ -787,7 +787,7 @@ static ssize_t prng_strength_show(struct device *dev,
 				  struct device_attribute *attr,
 				  char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "256\n");
+	return scnprintf(buf, PAGE_SIZE, "256\n");
 }
 static DEVICE_ATTR(strength, 0444, prng_strength_show, NULL);
 
@@ -824,7 +824,7 @@ static int __init prng_init(void)
 
 	/* check if the CPU has a PRNG */
 	if (!cpacf_query_func(CPACF_KMC, CPACF_KMC_PRNG))
-		return -EOPNOTSUPP;
+		return -ENODEV;
 
 	/* check if TRNG subfunction is available */
 	if (cpacf_query_func(CPACF_PRNO, CPACF_PRNO_TRNG))
@@ -837,7 +837,7 @@ static int __init prng_init(void)
 			if (prng_mode == PRNG_MODE_SHA512) {
 				pr_err("The prng module cannot "
 				       "start in SHA-512 mode\n");
-				return -EOPNOTSUPP;
+				return -ENODEV;
 			}
 			prng_mode = PRNG_MODE_TDES;
 		} else

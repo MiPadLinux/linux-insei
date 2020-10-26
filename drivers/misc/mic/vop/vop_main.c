@@ -1,19 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Intel MIC Platform Software Stack (MPSS)
  *
  * Copyright(c) 2016 Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
  *
  * Adapted from:
  *
@@ -21,14 +10,9 @@
  *
  * Copyright IBM Corp. 2008
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (version 2 only)
- * as published by the Free Software Foundation.
- *
  *    Author(s): Christian Borntraeger <borntraeger@de.ibm.com>
  *
  * Intel Virtio Over PCIe (VOP) driver.
- *
  */
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -140,6 +124,7 @@ static void vop_transport_features(struct virtio_device *vdev)
 	 * creates virtio rings on preallocated memory.
 	 */
 	__virtio_clear_bit(vdev, VIRTIO_F_RING_PACKED);
+	__virtio_set_bit(vdev, VIRTIO_F_ACCESS_PLATFORM);
 }
 
 static int vop_finalize_features(struct virtio_device *vdev)
@@ -336,7 +321,7 @@ static struct virtqueue *vop_find_vq(struct virtio_device *dev,
 	/* First assign the vring's allocated in host memory */
 	vqconfig = _vop_vq_config(vdev->desc) + index;
 	memcpy_fromio(&config, vqconfig, sizeof(config));
-	_vr_size = vring_size(le16_to_cpu(config.num), MIC_VIRTIO_RING_ALIGN);
+	_vr_size = round_up(vring_size(le16_to_cpu(config.num), MIC_VIRTIO_RING_ALIGN), 4);
 	vr_size = PAGE_ALIGN(_vr_size + sizeof(struct _mic_vring_info));
 	va = vpdev->hw_ops->remap(vpdev, le64_to_cpu(config.address), vr_size);
 	if (!va)
@@ -454,7 +439,7 @@ error:
 /*
  * The config ops structure as defined by virtio config
  */
-static struct virtio_config_ops vop_vq_config_ops = {
+static const struct virtio_config_ops vop_vq_config_ops = {
 	.get_features = vop_get_features,
 	.finalize_features = vop_finalize_features,
 	.get = vop_get,
@@ -562,7 +547,7 @@ static int vop_match_desc(struct device *dev, void *data)
 	return vdev->desc == (void __iomem *)data;
 }
 
-static struct _vop_vdev *vop_dc_to_vdev(struct mic_device_ctrl *dc)
+static struct _vop_vdev *vop_dc_to_vdev(struct mic_device_ctrl __iomem *dc)
 {
 	return (struct _vop_vdev *)(unsigned long)readq(&dc->vdev);
 }
@@ -630,7 +615,6 @@ static void _vop_scan_devices(void __iomem *dp, struct vop_device *vpdev,
 	struct mic_device_desc __iomem *d;
 	struct mic_device_ctrl __iomem *dc;
 	struct device *dev;
-	int ret;
 
 	for (i = sizeof(struct mic_bootparam);
 			i < MIC_DP_SIZE; i += _vop_total_desc_size(d)) {
@@ -660,7 +644,7 @@ static void _vop_scan_devices(void __iomem *dp, struct vop_device *vpdev,
 					 &dc->config_change);
 			put_device(dev);
 			_vop_handle_config_change(d, i, vpdev);
-			ret = _vop_remove_device(d, i, vpdev);
+			_vop_remove_device(d, i, vpdev);
 			if (remove) {
 				iowrite8(0, &dc->config_change);
 				iowrite8(0, &dc->guest_ack);
@@ -779,7 +763,7 @@ static void vop_driver_remove(struct vop_device *vpdev)
 	kfree(vi);
 }
 
-static struct vop_device_id id_table[] = {
+static const struct vop_device_id id_table[] = {
 	{ VOP_DEV_TRNSP, VOP_DEV_ANY_ID },
 	{ 0 },
 };

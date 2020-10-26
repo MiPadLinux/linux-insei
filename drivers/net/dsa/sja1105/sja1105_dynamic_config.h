@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0
- * Copyright (c) 2019, Vladimir Oltean <olteanv@gmail.com>
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (c) 2019, Vladimir Oltean <olteanv@gmail.com>
  */
 #ifndef _SJA1105_DYNAMIC_CONFIG_H
 #define _SJA1105_DYNAMIC_CONFIG_H
@@ -7,13 +7,10 @@
 #include "sja1105.h"
 #include <linux/packing.h>
 
-struct sja1105_dyn_cmd {
-	u64 valid;
-	u64 rdwrset;
-	u64 errors;
-	u64 valident;
-	u64 index;
-};
+/* Special index that can be used for sja1105_dynamic_config_read */
+#define SJA1105_SEARCH		-1
+
+struct sja1105_dyn_cmd;
 
 struct sja1105_dynamic_table_ops {
 	/* This returns size_t just to keep same prototype as the
@@ -37,7 +34,7 @@ struct sja1105_mgmt_entry {
 	u64 index;
 };
 
-extern struct sja1105_dynamic_table_ops sja1105et_dyn_ops[BLK_IDX_MAX_DYN];
-extern struct sja1105_dynamic_table_ops sja1105pqrs_dyn_ops[BLK_IDX_MAX_DYN];
+extern const struct sja1105_dynamic_table_ops sja1105et_dyn_ops[BLK_IDX_MAX_DYN];
+extern const struct sja1105_dynamic_table_ops sja1105pqrs_dyn_ops[BLK_IDX_MAX_DYN];
 
 #endif

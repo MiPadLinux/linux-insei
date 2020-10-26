@@ -1,18 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Hardware monitoring driver for Maxim MAX6621
  *
  * Copyright (c) 2017 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2017 Vadim Pasternak <vadimp@mellanox.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
  */
 
 #include <linux/bitops.h>
@@ -486,8 +477,7 @@ static const struct hwmon_chip_info max6621_chip_info = {
 	.info = max6621_info,
 };
 
-static int max6621_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int max6621_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct max6621_data *data;
@@ -564,7 +554,7 @@ static struct i2c_driver max6621_driver = {
 		.name = MAX6621_DRV_NAME,
 		.of_match_table = of_match_ptr(max6621_of_match),
 	},
-	.probe		= max6621_probe,
+	.probe_new	= max6621_probe,
 	.id_table	= max6621_id,
 };
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /******************************************************************************
  *
  *	(C)Copyright 1998,1999 SysKonnect,
@@ -5,18 +6,9 @@
  *
  *	See the file "skfddi.c" for further information.
  *
- *	This program is free software; you can redistribute it and/or modify
- *	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation; either version 2 of the License, or
- *	(at your option) any later version.
- *
  *	The information in this file is provided "AS IS" without warranty.
  *
  ******************************************************************************/
-
-#ifndef	lint
-static char const ID_sccs[] = "@(#)hwmtm.c	1.40 99/05/31 (C) SK" ;
-#endif
 
 #define	HWMTM
 

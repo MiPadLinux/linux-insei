@@ -1,6 +1,8 @@
 #!/bin/sh
 # Zstd perf.data compression/decompression
 
+# SPDX-License-Identifier: GPL-2.0
+
 trace_file=$(mktemp /tmp/perf.data.XXX)
 perf_tool=perf
 
@@ -10,8 +12,9 @@ skip_if_no_z_record() {
 
 collect_z_record() {
 	echo "Collecting compressed record file:"
-	$perf_tool record -o $trace_file -g -z -F 5000 -- \
-		dd count=500 if=/dev/random of=/dev/null
+	[[ "$(uname -m)" != s390x ]] && gflag='-g'
+	$perf_tool record -o $trace_file $gflag -z -F 5000 -- \
+		dd count=500 if=/dev/urandom of=/dev/null
 }
 
 check_compressed_stats() {

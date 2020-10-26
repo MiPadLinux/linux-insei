@@ -1,22 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2015 Free Electrons
  * Copyright (C) 2015 NextThing Co
  *
  * Maxime Ripard <maxime.ripard@free-electrons.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of
- * the License, or (at your option) any later version.
  */
 
 #include <linux/clk.h>
 
-#include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_bridge.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_simple_kms_helper.h>
 
 #include "sun4i_crtc.h"
 #include "sun4i_tcon.h"
@@ -50,7 +48,7 @@ static int sun4i_rgb_get_modes(struct drm_connector *connector)
 	struct sun4i_rgb *rgb =
 		drm_connector_to_sun4i_rgb(connector);
 
-	return drm_panel_get_modes(rgb->panel);
+	return drm_panel_get_modes(rgb->panel, connector);
 }
 
 /*
@@ -140,16 +138,13 @@ out:
 	return MODE_OK;
 }
 
-static struct drm_connector_helper_funcs sun4i_rgb_con_helper_funcs = {
+static const struct drm_connector_helper_funcs sun4i_rgb_con_helper_funcs = {
 	.get_modes	= sun4i_rgb_get_modes,
 };
 
 static void
 sun4i_rgb_connector_destroy(struct drm_connector *connector)
 {
-	struct sun4i_rgb *rgb = drm_connector_to_sun4i_rgb(connector);
-
-	drm_panel_detach(rgb->panel);
 	drm_connector_cleanup(connector);
 }
 
@@ -185,19 +180,10 @@ static void sun4i_rgb_encoder_disable(struct drm_encoder *encoder)
 	}
 }
 
-static struct drm_encoder_helper_funcs sun4i_rgb_enc_helper_funcs = {
+static const struct drm_encoder_helper_funcs sun4i_rgb_enc_helper_funcs = {
 	.disable	= sun4i_rgb_encoder_disable,
 	.enable		= sun4i_rgb_encoder_enable,
 	.mode_valid	= sun4i_rgb_mode_valid,
-};
-
-static void sun4i_rgb_enc_destroy(struct drm_encoder *encoder)
-{
-	drm_encoder_cleanup(encoder);
-}
-
-static struct drm_encoder_funcs sun4i_rgb_enc_funcs = {
-	.destroy	= sun4i_rgb_enc_destroy,
 };
 
 int sun4i_rgb_init(struct drm_device *drm, struct sun4i_tcon *tcon)
@@ -221,11 +207,8 @@ int sun4i_rgb_init(struct drm_device *drm, struct sun4i_tcon *tcon)
 
 	drm_encoder_helper_add(&rgb->encoder,
 			       &sun4i_rgb_enc_helper_funcs);
-	ret = drm_encoder_init(drm,
-			       &rgb->encoder,
-			       &sun4i_rgb_enc_funcs,
-			       DRM_MODE_ENCODER_NONE,
-			       NULL);
+	ret = drm_simple_encoder_init(drm, &rgb->encoder,
+				      DRM_MODE_ENCODER_NONE);
 	if (ret) {
 		dev_err(drm->dev, "Couldn't initialise the rgb encoder\n");
 		goto err_out;
@@ -247,16 +230,10 @@ int sun4i_rgb_init(struct drm_device *drm, struct sun4i_tcon *tcon)
 
 		drm_connector_attach_encoder(&rgb->connector,
 						  &rgb->encoder);
-
-		ret = drm_panel_attach(rgb->panel, &rgb->connector);
-		if (ret) {
-			dev_err(drm->dev, "Couldn't attach our panel\n");
-			goto err_cleanup_connector;
-		}
 	}
 
 	if (rgb->bridge) {
-		ret = drm_bridge_attach(encoder, rgb->bridge, NULL);
+		ret = drm_bridge_attach(encoder, rgb->bridge, NULL, 0);
 		if (ret) {
 			dev_err(drm->dev, "Couldn't attach our bridge\n");
 			goto err_cleanup_connector;

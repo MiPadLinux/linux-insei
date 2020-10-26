@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * macfb.c: Generic framebuffer for Macs whose colourmaps/modes we
  * don't know how to set.
@@ -17,10 +18,6 @@
  *
  * The VideoToolbox "Bugs" web page at
  * http://rajsky.psych.nyu.edu/Tips/VideoBugs.html
- *
- * This code is free software.  You may copy, modify, and distribute
- * it subject to the terms and conditions of the GNU General Public
- * License, version 2, or any later version, at your convenience.
  */
 
 #include <linux/module.h>
@@ -481,7 +478,7 @@ static int macfb_setcolreg(unsigned regno, unsigned red, unsigned green,
 			break;
 		/*
 		 * 24-bit colour almost doesn't exist on 68k Macs --
-		 * http://support.apple.com/kb/TA28634 (Old Article: 10992)
+		 * https://support.apple.com/kb/TA28634 (Old Article: 10992)
 		 */
 		case 24:
 		case 32:
@@ -499,7 +496,7 @@ static int macfb_setcolreg(unsigned regno, unsigned red, unsigned green,
 	return 0;
 }
 
-static struct fb_ops macfb_ops = {
+static const struct fb_ops macfb_ops = {
 	.owner		= THIS_MODULE,
 	.fb_setcolreg	= macfb_setcolreg,
 	.fb_fillrect	= cfb_fillrect,

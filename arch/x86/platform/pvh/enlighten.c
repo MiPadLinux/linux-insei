@@ -19,8 +19,8 @@
  * pvh_bootparams and pvh_start_info need to live in the data segment since
  * they are used after startup_{32|64}, which clear .bss, are invoked.
  */
-struct boot_params pvh_bootparams __attribute__((section(".data")));
-struct hvm_start_info pvh_start_info __attribute__((section(".data")));
+struct boot_params pvh_bootparams __section(".data");
+struct hvm_start_info pvh_start_info __section(".data");
 
 unsigned int pvh_start_info_sz = sizeof(pvh_start_info);
 
@@ -86,7 +86,7 @@ static void __init init_pvh_bootparams(bool xen_guest)
 	}
 
 	/*
-	 * See Documentation/x86/boot.txt.
+	 * See Documentation/x86/boot.rst.
 	 *
 	 * Version 2.12 supports Xen entry point but we will use default x86/PC
 	 * environment (i.e. hardware_subarch 0).

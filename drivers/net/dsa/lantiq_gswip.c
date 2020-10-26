@@ -642,6 +642,9 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 	struct gswip_priv *priv = ds->priv;
 	int err;
 
+	if (!dsa_is_user_port(ds, port))
+		return 0;
+
 	if (!dsa_is_cpu_port(ds, port)) {
 		err = gswip_add_single_port_br(priv, port, true);
 		if (err)
@@ -677,6 +680,9 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 static void gswip_port_disable(struct dsa_switch *ds, int port)
 {
 	struct gswip_priv *priv = ds->priv;
+
+	if (!dsa_is_user_port(ds, port))
+		return;
 
 	if (!dsa_is_cpu_port(ds, port)) {
 		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_DOWN,
@@ -730,14 +736,23 @@ static int gswip_pce_load_microcode(struct gswip_priv *priv)
 }
 
 static int gswip_port_vlan_filtering(struct dsa_switch *ds, int port,
-				     bool vlan_filtering)
+				     bool vlan_filtering,
+				     struct switchdev_trans *trans)
 {
 	struct gswip_priv *priv = ds->priv;
-	struct net_device *bridge = dsa_to_port(ds, port)->bridge_dev;
 
 	/* Do not allow changing the VLAN filtering options while in bridge */
-	if (!!(priv->port_vlan_filter & BIT(port)) != vlan_filtering && bridge)
-		return -EIO;
+	if (switchdev_trans_ph_prepare(trans)) {
+		struct net_device *bridge = dsa_to_port(ds, port)->bridge_dev;
+
+		if (!bridge)
+			return 0;
+
+		if (!!(priv->port_vlan_filter & BIT(port)) != vlan_filtering)
+			return -EIO;
+
+		return 0;
+	}
 
 	if (vlan_filtering) {
 		/* Use port based VLAN tag */
@@ -775,8 +790,15 @@ static int gswip_setup(struct dsa_switch *ds)
 
 	/* disable port fetch/store dma on all ports */
 	for (i = 0; i < priv->hw_info->max_ports; i++) {
+		struct switchdev_trans trans;
+
+		/* Skip the prepare phase, this shouldn't return an error
+		 * during setup.
+		 */
+		trans.ph_prepare = false;
+
 		gswip_port_disable(ds, i);
-		gswip_port_vlan_filtering(ds, i, false);
+		gswip_port_vlan_filtering(ds, i, false, &trans);
 	}
 
 	/* enable Switch */
@@ -835,7 +857,8 @@ static int gswip_setup(struct dsa_switch *ds)
 }
 
 static enum dsa_tag_protocol gswip_get_tag_protocol(struct dsa_switch *ds,
-						    int port)
+						    int port,
+						    enum dsa_tag_protocol mp)
 {
 	return DSA_TAG_PROTO_GSWIP;
 }
@@ -1445,7 +1468,8 @@ static void gswip_phylink_validate(struct dsa_switch *ds, int port,
 
 unsupported:
 	bitmap_zero(supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	dev_err(ds->dev, "Unsupported interface: %d\n", state->interface);
+	dev_err(ds->dev, "Unsupported interface '%s' for port %d\n",
+		phy_modes(state->interface), port);
 	return;
 }
 
@@ -1510,7 +1534,9 @@ static void gswip_phylink_mac_link_down(struct dsa_switch *ds, int port,
 static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
 				      unsigned int mode,
 				      phy_interface_t interface,
-				      struct phy_device *phydev)
+				      struct phy_device *phydev,
+				      int speed, int duplex,
+				      bool tx_pause, bool rx_pause)
 {
 	struct gswip_priv *priv = ds->priv;
 
@@ -1822,7 +1848,6 @@ remove_gphy:
 static int gswip_probe(struct platform_device *pdev)
 {
 	struct gswip_priv *priv;
-	struct resource *gswip_res, *mdio_res, *mii_res;
 	struct device_node *mdio_np, *gphy_fw_np;
 	struct device *dev = &pdev->dev;
 	int err;
@@ -1833,18 +1858,15 @@ static int gswip_probe(struct platform_device *pdev)
 	if (!priv)
 		return -ENOMEM;
 
-	gswip_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	priv->gswip = devm_ioremap_resource(dev, gswip_res);
+	priv->gswip = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(priv->gswip))
 		return PTR_ERR(priv->gswip);
 
-	mdio_res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	priv->mdio = devm_ioremap_resource(dev, mdio_res);
+	priv->mdio = devm_platform_ioremap_resource(pdev, 1);
 	if (IS_ERR(priv->mdio))
 		return PTR_ERR(priv->mdio);
 
-	mii_res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
-	priv->mii = devm_ioremap_resource(dev, mii_res);
+	priv->mii = devm_platform_ioremap_resource(pdev, 2);
 	if (IS_ERR(priv->mii))
 		return PTR_ERR(priv->mii);
 
@@ -1852,10 +1874,12 @@ static int gswip_probe(struct platform_device *pdev)
 	if (!priv->hw_info)
 		return -EINVAL;
 
-	priv->ds = dsa_switch_alloc(dev, priv->hw_info->max_ports);
+	priv->ds = devm_kzalloc(dev, sizeof(*priv->ds), GFP_KERNEL);
 	if (!priv->ds)
 		return -ENOMEM;
 
+	priv->ds->dev = dev;
+	priv->ds->num_ports = priv->hw_info->max_ports;
 	priv->ds->priv = priv;
 	priv->ds->ops = &gswip_switch_ops;
 	priv->dev = dev;

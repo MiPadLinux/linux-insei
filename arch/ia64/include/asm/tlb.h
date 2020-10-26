@@ -42,10 +42,8 @@
 #include <linux/pagemap.h>
 #include <linux/swap.h>
 
-#include <asm/pgalloc.h>
 #include <asm/processor.h>
 #include <asm/tlbflush.h>
-#include <asm/machvec.h>
 
 #include <asm-generic/tlb.h>
 

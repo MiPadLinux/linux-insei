@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2015 Thomas Meyer (thomas@m3y3r.de)
  * Copyright (C) 2007 Jeff Dike (jdike@{addtoit,linux.intel}.com)
- * Licensed under the GPL
  */
 
 #include <signal.h>
@@ -21,7 +21,7 @@
  * on some systems.
  */
 
-void __attribute__ ((__section__ (".__syscall_stub")))
+void __section(".__syscall_stub")
 stub_clone_handler(void)
 {
 	struct stub_data *data = (struct stub_data *) STUB_DATA;

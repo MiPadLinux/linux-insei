@@ -6,6 +6,7 @@
 #include <linux/mmu_context.h>
 #include <asm/copro.h>
 #include <asm/pnv-ocxl.h>
+#include <asm/xive.h>
 #include <misc/ocxl.h>
 #include "ocxl_internal.h"
 #include "trace.h"
@@ -221,6 +222,17 @@ static irqreturn_t xsl_fault_handler(int irq, void *data)
 		 */
 		rcu_read_unlock();
 		pr_debug("Unknown mm context for xsl interrupt\n");
+		ack_irq(spa, ADDRESS_ERROR);
+		return IRQ_HANDLED;
+	}
+
+	if (!pe_data->mm) {
+		/*
+		 * translation fault from a kernel context - an OpenCAPI
+		 * device tried to access a bad kernel address
+		 */
+		rcu_read_unlock();
+		pr_warn("Unresolved OpenCAPI xsl fault in kernel context\n");
 		ack_irq(spa, ADDRESS_ERROR);
 		return IRQ_HANDLED;
 	}
@@ -523,7 +535,13 @@ int ocxl_link_add_pe(void *link_handle, int pasid, u32 pidr, u32 tidr,
 	pe->amr = cpu_to_be64(amr);
 	pe->software_state = cpu_to_be32(SPA_PE_VALID);
 
-	mm_context_add_copro(mm);
+	/*
+	 * For user contexts, register a copro so that TLBIs are seen
+	 * by the nest MMU. If we have a kernel context, TLBIs are
+	 * already global.
+	 */
+	if (mm)
+		mm_context_add_copro(mm);
 	/*
 	 * Barrier is to make sure PE is visible in the SPA before it
 	 * is used by the device. It also helps with the global TLBI
@@ -546,7 +564,8 @@ int ocxl_link_add_pe(void *link_handle, int pasid, u32 pidr, u32 tidr,
 	 * have a reference on mm_users. Incrementing mm_count solves
 	 * the problem.
 	 */
-	mmgrab(mm);
+	if (mm)
+		mmgrab(mm);
 	trace_ocxl_context_add(current->pid, spa->spa_mem, pasid, pidr, tidr);
 unlock:
 	mutex_unlock(&spa->spa_lock);
@@ -652,8 +671,10 @@ int ocxl_link_remove_pe(void *link_handle, int pasid)
 	if (!pe_data) {
 		WARN(1, "Couldn't find pe data when removing PE\n");
 	} else {
-		mm_context_remove_copro(pe_data->mm);
-		mmdrop(pe_data->mm);
+		if (pe_data->mm) {
+			mm_context_remove_copro(pe_data->mm);
+			mmdrop(pe_data->mm);
+		}
 		kfree_rcu(pe_data, rcu);
 	}
 unlock:
@@ -662,23 +683,21 @@ unlock:
 }
 EXPORT_SYMBOL_GPL(ocxl_link_remove_pe);
 
-int ocxl_link_irq_alloc(void *link_handle, int *hw_irq, u64 *trigger_addr)
+int ocxl_link_irq_alloc(void *link_handle, int *hw_irq)
 {
 	struct ocxl_link *link = (struct ocxl_link *) link_handle;
-	int rc, irq;
-	u64 addr;
+	int irq;
 
 	if (atomic_dec_if_positive(&link->irq_available) < 0)
 		return -ENOSPC;
 
-	rc = pnv_ocxl_alloc_xive_irq(&irq, &addr);
-	if (rc) {
+	irq = xive_native_alloc_irq();
+	if (!irq) {
 		atomic_inc(&link->irq_available);
-		return rc;
+		return -ENXIO;
 	}
 
 	*hw_irq = irq;
-	*trigger_addr = addr;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ocxl_link_irq_alloc);
@@ -687,7 +706,7 @@ void ocxl_link_free_irq(void *link_handle, int hw_irq)
 {
 	struct ocxl_link *link = (struct ocxl_link *) link_handle;
 
-	pnv_ocxl_free_xive_irq(hw_irq);
+	xive_native_free_irq(hw_irq);
 	atomic_inc(&link->irq_available);
 }
 EXPORT_SYMBOL_GPL(ocxl_link_free_irq);

@@ -39,9 +39,16 @@
 #define DFSDM_MAX_INT_OVERSAMPLING 256
 #define DFSDM_MAX_FL_OVERSAMPLING 1024
 
-/* Max sample resolutions */
-#define DFSDM_MAX_RES BIT(31)
-#define DFSDM_DATA_RES BIT(23)
+/* Limit filter output resolution to 31 bits. (i.e. sample range is +/-2^30) */
+#define DFSDM_DATA_MAX BIT(30)
+/*
+ * Data are output as two's complement data in a 24 bit field.
+ * Data from filters are in the range +/-2^(n-1)
+ * 2^(n-1) maximum positive value cannot be coded in 2's complement n bits
+ * An extra bit is required to avoid wrap-around of the binary code for 2^(n-1)
+ * So, the resolution of samples from filter is actually limited to 23 bits
+ */
+#define DFSDM_DATA_RES 24
 
 /* Filter configuration */
 #define DFSDM_CR1_CFG_MASK (DFSDM_CR1_RCH_MASK | DFSDM_CR1_RCONT_MASK | \
@@ -55,7 +62,7 @@ enum sd_converter_type {
 
 struct stm32_dfsdm_dev_data {
 	int type;
-	int (*init)(struct iio_dev *indio_dev);
+	int (*init)(struct device *dev, struct iio_dev *indio_dev);
 	unsigned int num_channels;
 	const struct regmap_config *regmap_cfg;
 };
@@ -181,14 +188,15 @@ static int stm32_dfsdm_get_jextsel(struct iio_dev *indio_dev,
 	return -EINVAL;
 }
 
-static int stm32_dfsdm_set_osrs(struct stm32_dfsdm_filter *fl,
-				unsigned int fast, unsigned int oversamp)
+static int stm32_dfsdm_compute_osrs(struct stm32_dfsdm_filter *fl,
+				    unsigned int fast, unsigned int oversamp)
 {
 	unsigned int i, d, fosr, iosr;
-	u64 res;
-	s64 delta;
+	u64 res, max;
+	int bits, shift;
 	unsigned int m = 1;	/* multiplication factor */
 	unsigned int p = fl->ford;	/* filter order (ford) */
+	struct stm32_dfsdm_filter_osr *flo = &fl->flo[fast];
 
 	pr_debug("%s: Requested oversampling: %d\n",  __func__, oversamp);
 	/*
@@ -207,11 +215,8 @@ static int stm32_dfsdm_set_osrs(struct stm32_dfsdm_filter *fl,
 
 	/*
 	 * Look for filter and integrator oversampling ratios which allows
-	 * to reach 24 bits data output resolution.
-	 * Leave as soon as if exact resolution if reached.
-	 * Otherwise the higher resolution below 32 bits is kept.
+	 * to maximize data output resolution.
 	 */
-	fl->res = 0;
 	for (fosr = 1; fosr <= DFSDM_MAX_FL_OVERSAMPLING; fosr++) {
 		for (iosr = 1; iosr <= DFSDM_MAX_INT_OVERSAMPLING; iosr++) {
 			if (fast)
@@ -236,40 +241,99 @@ static int stm32_dfsdm_set_osrs(struct stm32_dfsdm_filter *fl,
 			res = fosr;
 			for (i = p - 1; i > 0; i--) {
 				res = res * (u64)fosr;
-				if (res > DFSDM_MAX_RES)
+				if (res > DFSDM_DATA_MAX)
 					break;
 			}
-			if (res > DFSDM_MAX_RES)
+			if (res > DFSDM_DATA_MAX)
 				continue;
+
 			res = res * (u64)m * (u64)iosr;
-			if (res > DFSDM_MAX_RES)
+			if (res > DFSDM_DATA_MAX)
 				continue;
 
-			delta = res - DFSDM_DATA_RES;
+			if (res >= flo->res) {
+				flo->res = res;
+				flo->fosr = fosr;
+				flo->iosr = iosr;
 
-			if (res >= fl->res) {
-				fl->res = res;
-				fl->fosr = fosr;
-				fl->iosr = iosr;
-				fl->fast = fast;
-				pr_debug("%s: fosr = %d, iosr = %d\n",
-					 __func__, fl->fosr, fl->iosr);
+				bits = fls(flo->res);
+				/* 8 LBSs in data register contain chan info */
+				max = flo->res << 8;
+
+				/* if resolution is not a power of two */
+				if (flo->res > BIT(bits - 1))
+					bits++;
+				else
+					max--;
+
+				shift = DFSDM_DATA_RES - bits;
+				/*
+				 * Compute right/left shift
+				 * Right shift is performed by hardware
+				 * when transferring samples to data register.
+				 * Left shift is done by software on buffer
+				 */
+				if (shift > 0) {
+					/* Resolution is lower than 24 bits */
+					flo->rshift = 0;
+					flo->lshift = shift;
+				} else {
+					/*
+					 * If resolution is 24 bits or more,
+					 * max positive value may be ambiguous
+					 * (equal to max negative value as sign
+					 * bit is dropped).
+					 * Reduce resolution to 23 bits (rshift)
+					 * to keep the sign on bit 23 and treat
+					 * saturation before rescaling on 24
+					 * bits (lshift).
+					 */
+					flo->rshift = 1 - shift;
+					flo->lshift = 1;
+					max >>= flo->rshift;
+				}
+				flo->max = (s32)max;
+				flo->bits = bits;
+
+				pr_debug("%s: fast %d, fosr %d, iosr %d, res 0x%llx/%d bits, rshift %d, lshift %d\n",
+					 __func__, fast, flo->fosr, flo->iosr,
+					 flo->res, bits, flo->rshift,
+					 flo->lshift);
 			}
-
-			if (!delta)
-				return 0;
 		}
 	}
 
-	if (!fl->res)
+	if (!flo->res)
 		return -EINVAL;
 
 	return 0;
 }
 
-static int stm32_dfsdm_start_channel(struct stm32_dfsdm_adc *adc)
+static int stm32_dfsdm_compute_all_osrs(struct iio_dev *indio_dev,
+					unsigned int oversamp)
 {
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
+	struct stm32_dfsdm_filter *fl = &adc->dfsdm->fl_list[adc->fl_id];
+	int ret0, ret1;
+
+	memset(&fl->flo[0], 0, sizeof(fl->flo[0]));
+	memset(&fl->flo[1], 0, sizeof(fl->flo[1]));
+
+	ret0 = stm32_dfsdm_compute_osrs(fl, 0, oversamp);
+	ret1 = stm32_dfsdm_compute_osrs(fl, 1, oversamp);
+	if (ret0 < 0 && ret1 < 0) {
+		dev_err(&indio_dev->dev,
+			"Filter parameters not found: errors %d/%d\n",
+			ret0, ret1);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int stm32_dfsdm_start_channel(struct iio_dev *indio_dev)
+{
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 	const struct iio_chan_spec *chan;
 	unsigned int bit;
@@ -287,9 +351,9 @@ static int stm32_dfsdm_start_channel(struct stm32_dfsdm_adc *adc)
 	return 0;
 }
 
-static void stm32_dfsdm_stop_channel(struct stm32_dfsdm_adc *adc)
+static void stm32_dfsdm_stop_channel(struct iio_dev *indio_dev)
 {
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 	const struct iio_chan_spec *chan;
 	unsigned int bit;
@@ -355,11 +419,11 @@ static void stm32_dfsdm_stop_filter(struct stm32_dfsdm *dfsdm,
 			   DFSDM_CR1_DFEN_MASK, DFSDM_CR1_DFEN(0));
 }
 
-static int stm32_dfsdm_filter_set_trig(struct stm32_dfsdm_adc *adc,
+static int stm32_dfsdm_filter_set_trig(struct iio_dev *indio_dev,
 				       unsigned int fl_id,
 				       struct iio_trigger *trig)
 {
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 	u32 jextsel = 0, jexten = STM32_DFSDM_JEXTEN_DISABLED;
 	int ret;
@@ -384,13 +448,61 @@ static int stm32_dfsdm_filter_set_trig(struct stm32_dfsdm_adc *adc,
 	return 0;
 }
 
-static int stm32_dfsdm_filter_configure(struct stm32_dfsdm_adc *adc,
+static int stm32_dfsdm_channels_configure(struct iio_dev *indio_dev,
+					  unsigned int fl_id,
+					  struct iio_trigger *trig)
+{
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
+	struct regmap *regmap = adc->dfsdm->regmap;
+	struct stm32_dfsdm_filter *fl = &adc->dfsdm->fl_list[fl_id];
+	struct stm32_dfsdm_filter_osr *flo = &fl->flo[0];
+	const struct iio_chan_spec *chan;
+	unsigned int bit;
+	int ret;
+
+	fl->fast = 0;
+
+	/*
+	 * In continuous mode, use fast mode configuration,
+	 * if it provides a better resolution.
+	 */
+	if (adc->nconv == 1 && !trig &&
+	    (indio_dev->currentmode & INDIO_BUFFER_SOFTWARE)) {
+		if (fl->flo[1].res >= fl->flo[0].res) {
+			fl->fast = 1;
+			flo = &fl->flo[1];
+		}
+	}
+
+	if (!flo->res)
+		return -EINVAL;
+
+	dev_dbg(&indio_dev->dev, "Samples actual resolution: %d bits",
+		min(flo->bits, (u32)DFSDM_DATA_RES - 1));
+
+	for_each_set_bit(bit, &adc->smask,
+			 sizeof(adc->smask) * BITS_PER_BYTE) {
+		chan = indio_dev->channels + bit;
+
+		ret = regmap_update_bits(regmap,
+					 DFSDM_CHCFGR2(chan->channel),
+					 DFSDM_CHCFGR2_DTRBS_MASK,
+					 DFSDM_CHCFGR2_DTRBS(flo->rshift));
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int stm32_dfsdm_filter_configure(struct iio_dev *indio_dev,
 					unsigned int fl_id,
 					struct iio_trigger *trig)
 {
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 	struct stm32_dfsdm_filter *fl = &adc->dfsdm->fl_list[fl_id];
+	struct stm32_dfsdm_filter_osr *flo = &fl->flo[fl->fast];
 	u32 cr1;
 	const struct iio_chan_spec *chan;
 	unsigned int bit, jchg = 0;
@@ -398,13 +510,13 @@ static int stm32_dfsdm_filter_configure(struct stm32_dfsdm_adc *adc,
 
 	/* Average integrator oversampling */
 	ret = regmap_update_bits(regmap, DFSDM_FCR(fl_id), DFSDM_FCR_IOSR_MASK,
-				 DFSDM_FCR_IOSR(fl->iosr - 1));
+				 DFSDM_FCR_IOSR(flo->iosr - 1));
 	if (ret)
 		return ret;
 
 	/* Filter order and Oversampling */
 	ret = regmap_update_bits(regmap, DFSDM_FCR(fl_id), DFSDM_FCR_FOSR_MASK,
-				 DFSDM_FCR_FOSR(fl->fosr - 1));
+				 DFSDM_FCR_FOSR(flo->fosr - 1));
 	if (ret)
 		return ret;
 
@@ -413,7 +525,13 @@ static int stm32_dfsdm_filter_configure(struct stm32_dfsdm_adc *adc,
 	if (ret)
 		return ret;
 
-	ret = stm32_dfsdm_filter_set_trig(adc, fl_id, trig);
+	ret = stm32_dfsdm_filter_set_trig(indio_dev, fl_id, trig);
+	if (ret)
+		return ret;
+
+	ret = regmap_update_bits(regmap, DFSDM_CR1(fl_id),
+				 DFSDM_CR1_FAST_MASK,
+				 DFSDM_CR1_FAST(fl->fast));
 	if (ret)
 		return ret;
 
@@ -563,7 +681,6 @@ static int dfsdm_adc_set_samp_freq(struct iio_dev *indio_dev,
 				   unsigned int spi_freq)
 {
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
-	struct stm32_dfsdm_filter *fl = &adc->dfsdm->fl_list[adc->fl_id];
 	unsigned int oversamp;
 	int ret;
 
@@ -573,11 +690,10 @@ static int dfsdm_adc_set_samp_freq(struct iio_dev *indio_dev,
 			"Rate not accurate. requested (%u), actual (%u)\n",
 			sample_freq, spi_freq / oversamp);
 
-	ret = stm32_dfsdm_set_osrs(fl, 0, oversamp);
-	if (ret < 0) {
-		dev_err(&indio_dev->dev, "No filter parameters that match!\n");
+	ret = stm32_dfsdm_compute_all_osrs(indio_dev, oversamp);
+	if (ret < 0)
 		return ret;
-	}
+
 	adc->sample_freq = spi_freq / oversamp;
 	adc->oversamp = oversamp;
 
@@ -617,17 +733,22 @@ static ssize_t dfsdm_adc_audio_set_spiclk(struct iio_dev *indio_dev,
 	return len;
 }
 
-static int stm32_dfsdm_start_conv(struct stm32_dfsdm_adc *adc,
+static int stm32_dfsdm_start_conv(struct iio_dev *indio_dev,
 				  struct iio_trigger *trig)
 {
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 	int ret;
 
-	ret = stm32_dfsdm_start_channel(adc);
+	ret = stm32_dfsdm_channels_configure(indio_dev, adc->fl_id, trig);
 	if (ret < 0)
 		return ret;
 
-	ret = stm32_dfsdm_filter_configure(adc, adc->fl_id, trig);
+	ret = stm32_dfsdm_start_channel(indio_dev);
+	if (ret < 0)
+		return ret;
+
+	ret = stm32_dfsdm_filter_configure(indio_dev, adc->fl_id, trig);
 	if (ret < 0)
 		goto stop_channels;
 
@@ -641,13 +762,14 @@ filter_unconfigure:
 	regmap_update_bits(regmap, DFSDM_CR1(adc->fl_id),
 			   DFSDM_CR1_CFG_MASK, 0);
 stop_channels:
-	stm32_dfsdm_stop_channel(adc);
+	stm32_dfsdm_stop_channel(indio_dev);
 
 	return ret;
 }
 
-static void stm32_dfsdm_stop_conv(struct stm32_dfsdm_adc *adc)
+static void stm32_dfsdm_stop_conv(struct iio_dev *indio_dev)
 {
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 
 	stm32_dfsdm_stop_filter(adc->dfsdm, adc->fl_id);
@@ -655,7 +777,7 @@ static void stm32_dfsdm_stop_conv(struct stm32_dfsdm_adc *adc)
 	regmap_update_bits(regmap, DFSDM_CR1(adc->fl_id),
 			   DFSDM_CR1_CFG_MASK, 0);
 
-	stm32_dfsdm_stop_channel(adc);
+	stm32_dfsdm_stop_channel(indio_dev);
 }
 
 static int stm32_dfsdm_set_watermark(struct iio_dev *indio_dev,
@@ -702,27 +824,28 @@ static unsigned int stm32_dfsdm_adc_dma_residue(struct stm32_dfsdm_adc *adc)
 	return 0;
 }
 
-static irqreturn_t stm32_dfsdm_adc_trigger_handler(int irq, void *p)
+static inline void stm32_dfsdm_process_data(struct stm32_dfsdm_adc *adc,
+					    s32 *buffer)
 {
-	struct iio_poll_func *pf = p;
-	struct iio_dev *indio_dev = pf->indio_dev;
-	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
-	int available = stm32_dfsdm_adc_dma_residue(adc);
+	struct stm32_dfsdm_filter *fl = &adc->dfsdm->fl_list[adc->fl_id];
+	struct stm32_dfsdm_filter_osr *flo = &fl->flo[fl->fast];
+	unsigned int i = adc->nconv;
+	s32 *ptr = buffer;
 
-	while (available >= indio_dev->scan_bytes) {
-		u32 *buffer = (u32 *)&adc->rx_buf[adc->bufi];
+	while (i--) {
+		/* Mask 8 LSB that contains the channel ID */
+		*ptr &= 0xFFFFFF00;
+		/* Convert 2^(n-1) sample to 2^(n-1)-1 to avoid wrap-around */
+		if (*ptr > flo->max)
+			*ptr -= 1;
+		/*
+		 * Samples from filter are retrieved with 23 bits resolution
+		 * or less. Shift left to align MSB on 24 bits.
+		 */
+		*ptr <<= flo->lshift;
 
-		iio_push_to_buffers_with_timestamp(indio_dev, buffer,
-						   pf->timestamp);
-		available -= indio_dev->scan_bytes;
-		adc->bufi += indio_dev->scan_bytes;
-		if (adc->bufi >= adc->buf_sz)
-			adc->bufi = 0;
+		ptr++;
 	}
-
-	iio_trigger_notify_done(indio_dev->trig);
-
-	return IRQ_HANDLED;
 }
 
 static void stm32_dfsdm_dma_buffer_done(void *data)
@@ -731,11 +854,6 @@ static void stm32_dfsdm_dma_buffer_done(void *data)
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	int available = stm32_dfsdm_adc_dma_residue(adc);
 	size_t old_pos;
-
-	if (indio_dev->currentmode & INDIO_BUFFER_TRIGGERED) {
-		iio_trigger_poll_chained(indio_dev->trig);
-		return;
-	}
 
 	/*
 	 * FIXME: In Kernel interface does not support cyclic DMA buffer,and
@@ -751,10 +869,10 @@ static void stm32_dfsdm_dma_buffer_done(void *data)
 	old_pos = adc->bufi;
 
 	while (available >= indio_dev->scan_bytes) {
-		u32 *buffer = (u32 *)&adc->rx_buf[adc->bufi];
+		s32 *buffer = (s32 *)&adc->rx_buf[adc->bufi];
 
-		/* Mask 8 LSB that contains the channel ID */
-		*buffer = (*buffer & 0xFFFFFF00) << 8;
+		stm32_dfsdm_process_data(adc, buffer);
+
 		available -= indio_dev->scan_bytes;
 		adc->bufi += indio_dev->scan_bytes;
 		if (adc->bufi >= adc->buf_sz) {
@@ -764,7 +882,15 @@ static void stm32_dfsdm_dma_buffer_done(void *data)
 			adc->bufi = 0;
 			old_pos = 0;
 		}
-		/* regular iio buffer without trigger */
+		/*
+		 * In DMA mode the trigger services of IIO are not used
+		 * (e.g. no call to iio_trigger_poll).
+		 * Calling irq handler associated to the hardware trigger is not
+		 * relevant as the conversions have already been done. Data
+		 * transfers are performed directly in DMA callback instead.
+		 * This implementation avoids to call trigger irq handler that
+		 * may sleep, in an atomic context (DMA irq handler context).
+		 */
 		if (adc->dev_data->type == DFSDM_IIO)
 			iio_push_to_buffers(indio_dev, buffer);
 	}
@@ -776,6 +902,11 @@ static void stm32_dfsdm_dma_buffer_done(void *data)
 static int stm32_dfsdm_adc_dma_start(struct iio_dev *indio_dev)
 {
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
+	/*
+	 * The DFSDM supports half-word transfers. However, for 16 bits record,
+	 * 4 bytes buswidth is kept, to avoid losing samples LSBs when left
+	 * shift is required.
+	 */
 	struct dma_slave_config config = {
 		.src_addr = (dma_addr_t)adc->dfsdm->phys_base,
 		.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES,
@@ -868,7 +999,7 @@ static int stm32_dfsdm_update_scan_mode(struct iio_dev *indio_dev,
 	return 0;
 }
 
-static int __stm32_dfsdm_postenable(struct iio_dev *indio_dev)
+static int stm32_dfsdm_postenable(struct iio_dev *indio_dev)
 {
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	int ret;
@@ -892,7 +1023,7 @@ static int __stm32_dfsdm_postenable(struct iio_dev *indio_dev)
 		goto stop_dfsdm;
 	}
 
-	ret = stm32_dfsdm_start_conv(adc, indio_dev->trig);
+	ret = stm32_dfsdm_start_conv(indio_dev, indio_dev->trig);
 	if (ret) {
 		dev_err(&indio_dev->dev, "Can't start conversion\n");
 		goto err_stop_dma;
@@ -911,34 +1042,11 @@ err_stop_hwc:
 	return ret;
 }
 
-static int stm32_dfsdm_postenable(struct iio_dev *indio_dev)
-{
-	int ret;
-
-	if (indio_dev->currentmode == INDIO_BUFFER_TRIGGERED) {
-		ret = iio_triggered_buffer_postenable(indio_dev);
-		if (ret < 0)
-			return ret;
-	}
-
-	ret = __stm32_dfsdm_postenable(indio_dev);
-	if (ret < 0)
-		goto err_predisable;
-
-	return 0;
-
-err_predisable:
-	if (indio_dev->currentmode == INDIO_BUFFER_TRIGGERED)
-		iio_triggered_buffer_predisable(indio_dev);
-
-	return ret;
-}
-
-static void __stm32_dfsdm_predisable(struct iio_dev *indio_dev)
+static int stm32_dfsdm_predisable(struct iio_dev *indio_dev)
 {
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 
-	stm32_dfsdm_stop_conv(adc);
+	stm32_dfsdm_stop_conv(indio_dev);
 
 	stm32_dfsdm_adc_dma_stop(indio_dev);
 
@@ -946,14 +1054,6 @@ static void __stm32_dfsdm_predisable(struct iio_dev *indio_dev)
 
 	if (adc->hwc)
 		iio_hw_consumer_disable(adc->hwc);
-}
-
-static int stm32_dfsdm_predisable(struct iio_dev *indio_dev)
-{
-	__stm32_dfsdm_predisable(indio_dev);
-
-	if (indio_dev->currentmode == INDIO_BUFFER_TRIGGERED)
-		iio_triggered_buffer_predisable(indio_dev);
 
 	return 0;
 }
@@ -1034,7 +1134,7 @@ static int stm32_dfsdm_single_conv(struct iio_dev *indio_dev,
 
 	adc->nconv = 1;
 	adc->smask = BIT(chan->scan_index);
-	ret = stm32_dfsdm_start_conv(adc, NULL);
+	ret = stm32_dfsdm_start_conv(indio_dev, NULL);
 	if (ret < 0) {
 		regmap_update_bits(adc->dfsdm->regmap, DFSDM_CR2(adc->fl_id),
 				   DFSDM_CR2_REOCIE_MASK, DFSDM_CR2_REOCIE(0));
@@ -1055,7 +1155,9 @@ static int stm32_dfsdm_single_conv(struct iio_dev *indio_dev,
 	else
 		ret = IIO_VAL_INT;
 
-	stm32_dfsdm_stop_conv(adc);
+	stm32_dfsdm_stop_conv(indio_dev);
+
+	stm32_dfsdm_process_data(adc, res);
 
 stop_dfsdm:
 	stm32_dfsdm_stop_dfsdm(adc->dfsdm);
@@ -1068,19 +1170,36 @@ static int stm32_dfsdm_write_raw(struct iio_dev *indio_dev,
 				 int val, int val2, long mask)
 {
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
-	struct stm32_dfsdm_filter *fl = &adc->dfsdm->fl_list[adc->fl_id];
 	struct stm32_dfsdm_channel *ch = &adc->dfsdm->ch_list[chan->channel];
 	unsigned int spi_freq;
 	int ret = -EINVAL;
+
+	switch (ch->src) {
+	case DFSDM_CHANNEL_SPI_CLOCK_INTERNAL:
+		spi_freq = adc->dfsdm->spi_master_freq;
+		break;
+	case DFSDM_CHANNEL_SPI_CLOCK_INTERNAL_DIV2_FALLING:
+	case DFSDM_CHANNEL_SPI_CLOCK_INTERNAL_DIV2_RISING:
+		spi_freq = adc->dfsdm->spi_master_freq / 2;
+		break;
+	default:
+		spi_freq = adc->spi_freq;
+	}
 
 	switch (mask) {
 	case IIO_CHAN_INFO_OVERSAMPLING_RATIO:
 		ret = iio_device_claim_direct_mode(indio_dev);
 		if (ret)
 			return ret;
-		ret = stm32_dfsdm_set_osrs(fl, 0, val);
-		if (!ret)
+
+		ret = stm32_dfsdm_compute_all_osrs(indio_dev, val);
+		if (!ret) {
+			dev_dbg(&indio_dev->dev,
+				"Sampling rate changed from (%u) to (%u)\n",
+				adc->sample_freq, spi_freq / val);
 			adc->oversamp = val;
+			adc->sample_freq = spi_freq / val;
+		}
 		iio_device_release_direct_mode(indio_dev);
 		return ret;
 
@@ -1091,18 +1210,6 @@ static int stm32_dfsdm_write_raw(struct iio_dev *indio_dev,
 		ret = iio_device_claim_direct_mode(indio_dev);
 		if (ret)
 			return ret;
-
-		switch (ch->src) {
-		case DFSDM_CHANNEL_SPI_CLOCK_INTERNAL:
-			spi_freq = adc->dfsdm->spi_master_freq;
-			break;
-		case DFSDM_CHANNEL_SPI_CLOCK_INTERNAL_DIV2_FALLING:
-		case DFSDM_CHANNEL_SPI_CLOCK_INTERNAL_DIV2_RISING:
-			spi_freq = adc->dfsdm->spi_master_freq / 2;
-			break;
-		default:
-			spi_freq = adc->spi_freq;
-		}
 
 		ret = dfsdm_adc_set_samp_freq(indio_dev, val, spi_freq);
 		iio_device_release_direct_mode(indio_dev);
@@ -1181,8 +1288,8 @@ static const struct iio_info stm32_dfsdm_info_adc = {
 
 static irqreturn_t stm32_dfsdm_irq(int irq, void *arg)
 {
-	struct stm32_dfsdm_adc *adc = arg;
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct iio_dev *indio_dev = arg;
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	struct regmap *regmap = adc->dfsdm->regmap;
 	unsigned int status, int_en;
 
@@ -1233,13 +1340,18 @@ static void stm32_dfsdm_dma_release(struct iio_dev *indio_dev)
 	}
 }
 
-static int stm32_dfsdm_dma_request(struct iio_dev *indio_dev)
+static int stm32_dfsdm_dma_request(struct device *dev,
+				   struct iio_dev *indio_dev)
 {
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 
-	adc->dma_chan = dma_request_slave_channel(&indio_dev->dev, "rx");
-	if (!adc->dma_chan)
-		return -EINVAL;
+	adc->dma_chan = dma_request_chan(dev, "rx");
+	if (IS_ERR(adc->dma_chan)) {
+		int ret = PTR_ERR(adc->dma_chan);
+
+		adc->dma_chan = NULL;
+		return ret;
+	}
 
 	adc->rx_buf = dma_alloc_coherent(adc->dma_chan->device->dev,
 					 DFSDM_DMA_BUFFER_SIZE,
@@ -1277,11 +1389,11 @@ static int stm32_dfsdm_adc_chan_init_one(struct iio_dev *indio_dev,
 					BIT(IIO_CHAN_INFO_SAMP_FREQ);
 
 	if (adc->dev_data->type == DFSDM_AUDIO) {
-		ch->scan_type.sign = 's';
 		ch->ext_info = dfsdm_adc_audio_ext_info;
 	} else {
-		ch->scan_type.sign = 'u';
+		ch->scan_type.shift = 8;
 	}
+	ch->scan_type.sign = 's';
 	ch->scan_type.realbits = 24;
 	ch->scan_type.storagebits = 32;
 
@@ -1289,7 +1401,7 @@ static int stm32_dfsdm_adc_chan_init_one(struct iio_dev *indio_dev,
 					  &adc->dfsdm->ch_list[ch->channel]);
 }
 
-static int stm32_dfsdm_audio_init(struct iio_dev *indio_dev)
+static int stm32_dfsdm_audio_init(struct device *dev, struct iio_dev *indio_dev)
 {
 	struct iio_chan_spec *ch;
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
@@ -1316,10 +1428,10 @@ static int stm32_dfsdm_audio_init(struct iio_dev *indio_dev)
 	indio_dev->num_channels = 1;
 	indio_dev->channels = ch;
 
-	return stm32_dfsdm_dma_request(indio_dev);
+	return stm32_dfsdm_dma_request(dev, indio_dev);
 }
 
-static int stm32_dfsdm_adc_init(struct iio_dev *indio_dev)
+static int stm32_dfsdm_adc_init(struct device *dev, struct iio_dev *indio_dev)
 {
 	struct iio_chan_spec *ch;
 	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
@@ -1327,8 +1439,7 @@ static int stm32_dfsdm_adc_init(struct iio_dev *indio_dev)
 	int ret, chan_idx;
 
 	adc->oversamp = DFSDM_DEFAULT_OVERSAMPLING;
-	ret = stm32_dfsdm_set_osrs(&adc->dfsdm->fl_list[adc->fl_id], 0,
-				   adc->oversamp);
+	ret = stm32_dfsdm_compute_all_osrs(indio_dev, adc->oversamp);
 	if (ret < 0)
 		return ret;
 
@@ -1364,14 +1475,18 @@ static int stm32_dfsdm_adc_init(struct iio_dev *indio_dev)
 	init_completion(&adc->completion);
 
 	/* Optionally request DMA */
-	if (stm32_dfsdm_dma_request(indio_dev)) {
-		dev_dbg(&indio_dev->dev, "No DMA support\n");
+	ret = stm32_dfsdm_dma_request(dev, indio_dev);
+	if (ret) {
+		if (ret != -ENODEV)
+			return dev_err_probe(dev, ret,
+					     "DMA channel request failed with\n");
+
+		dev_dbg(dev, "No DMA support\n");
 		return 0;
 	}
 
 	ret = iio_triggered_buffer_setup(indio_dev,
-					 &iio_pollfunc_store_time,
-					 &stm32_dfsdm_adc_trigger_handler,
+					 &iio_pollfunc_store_time, NULL,
 					 &stm32_dfsdm_buffer_setup_ops);
 	if (ret) {
 		stm32_dfsdm_dma_release(indio_dev);
@@ -1427,11 +1542,10 @@ static int stm32_dfsdm_adc_probe(struct platform_device *pdev)
 	adc = iio_priv(iio);
 	adc->dfsdm = dev_get_drvdata(dev->parent);
 
-	iio->dev.parent = dev;
 	iio->dev.of_node = np;
 	iio->modes = INDIO_DIRECT_MODE;
 
-	platform_set_drvdata(pdev, adc);
+	platform_set_drvdata(pdev, iio);
 
 	ret = of_property_read_u32(dev->of_node, "reg", &adc->fl_id);
 	if (ret != 0 || adc->fl_id >= adc->dfsdm->num_fls) {
@@ -1456,8 +1570,11 @@ static int stm32_dfsdm_adc_probe(struct platform_device *pdev)
 	 * So IRQ associated to filter instance 0 is dedicated to the Filter 0.
 	 */
 	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return irq;
+
 	ret = devm_request_irq(dev, irq, stm32_dfsdm_irq,
-			       0, pdev->name, adc);
+			       0, pdev->name, iio);
 	if (ret < 0) {
 		dev_err(dev, "Failed to request IRQ\n");
 		return ret;
@@ -1476,7 +1593,7 @@ static int stm32_dfsdm_adc_probe(struct platform_device *pdev)
 		adc->dfsdm->fl_list[adc->fl_id].sync_mode = val;
 
 	adc->dev_data = dev_data;
-	ret = dev_data->init(iio);
+	ret = dev_data->init(dev, iio);
 	if (ret < 0)
 		return ret;
 
@@ -1504,8 +1621,8 @@ err_cleanup:
 
 static int stm32_dfsdm_adc_remove(struct platform_device *pdev)
 {
-	struct stm32_dfsdm_adc *adc = platform_get_drvdata(pdev);
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 
 	if (adc->dev_data->type == DFSDM_AUDIO)
 		of_platform_depopulate(&pdev->dev);
@@ -1517,19 +1634,18 @@ static int stm32_dfsdm_adc_remove(struct platform_device *pdev)
 
 static int __maybe_unused stm32_dfsdm_adc_suspend(struct device *dev)
 {
-	struct stm32_dfsdm_adc *adc = dev_get_drvdata(dev);
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 
 	if (iio_buffer_enabled(indio_dev))
-		__stm32_dfsdm_predisable(indio_dev);
+		stm32_dfsdm_predisable(indio_dev);
 
 	return 0;
 }
 
 static int __maybe_unused stm32_dfsdm_adc_resume(struct device *dev)
 {
-	struct stm32_dfsdm_adc *adc = dev_get_drvdata(dev);
-	struct iio_dev *indio_dev = iio_priv_to_dev(adc);
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct stm32_dfsdm_adc *adc = iio_priv(indio_dev);
 	const struct iio_chan_spec *chan;
 	struct stm32_dfsdm_channel *ch;
 	int i, ret;
@@ -1544,7 +1660,7 @@ static int __maybe_unused stm32_dfsdm_adc_resume(struct device *dev)
 	}
 
 	if (iio_buffer_enabled(indio_dev))
-		__stm32_dfsdm_postenable(indio_dev);
+		stm32_dfsdm_postenable(indio_dev);
 
 	return 0;
 }

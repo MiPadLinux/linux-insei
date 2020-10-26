@@ -40,7 +40,7 @@ mount options are:
 	Enable the MBA Software Controller(mba_sc) to specify MBA
 	bandwidth in MBps
 
-L2 and L3 CDP are controlled seperately.
+L2 and L3 CDP are controlled separately.
 
 RDT features are orthogonal. A particular system may support only
 monitoring, only control, or both monitoring and control.  Cache
@@ -118,7 +118,7 @@ related to allocation:
 			      Corresponding region is pseudo-locked. No
 			      sharing allowed.
 
-Memory bandwitdh(MB) subdirectory contains the following files
+Memory bandwidth(MB) subdirectory contains the following files
 with respect to allocation:
 
 "min_bandwidth":
@@ -137,6 +137,18 @@ with respect to allocation:
 		Indicates if the delay scale is linear or
 		non-linear. This field is purely informational
 		only.
+
+"thread_throttle_mode":
+		Indicator on Intel systems of how tasks running on threads
+		of a physical core are throttled in cases where they
+		request different memory bandwidth percentages:
+
+		"max":
+			the smallest percentage is applied
+			to all threads
+		"per-thread":
+			bandwidth percentages are directly applied to
+			the threads running on the core
 
 If RDT monitoring is available there will be an "L3_MON" directory
 with the following files:
@@ -209,7 +221,7 @@ All groups contain the following files:
 	CPUs to/from this group. As with the tasks file a hierarchy is
 	maintained where MON groups may only include CPUs owned by the
 	parent CTRL_MON group.
-	When the resouce group is in pseudo-locked mode this file will
+	When the resource group is in pseudo-locked mode this file will
 	only be readable, reflecting the CPUs associated with the
 	pseudo-locked region.
 
@@ -342,7 +354,7 @@ For cache resources we describe the portion of the cache that is available
 for allocation using a bitmask. The maximum value of the mask is defined
 by each cpu model (and may be different for different cache levels). It
 is found using CPUID, but is also provided in the "info" directory of
-the resctrl file system in "info/{resource}/cbm_mask". X86 hardware
+the resctrl file system in "info/{resource}/cbm_mask". Intel hardware
 requires that these masks have all the '1' bits in a contiguous block. So
 0x3, 0x6 and 0xC are legal 4-bit masks with two bits set, but 0x5, 0x9
 and 0xA are not.  On a system with a 20-bit mask each bit represents 5%
@@ -364,8 +376,10 @@ to the next control step available on the hardware.
 
 The bandwidth throttling is a core specific mechanism on some of Intel
 SKUs. Using a high bandwidth and a low bandwidth setting on two threads
-sharing a core will result in both threads being throttled to use the
-low bandwidth. The fact that Memory bandwidth allocation(MBA) is a core
+sharing a core may result in both threads being throttled to use the
+low bandwidth (see "thread_throttle_mode").
+
+The fact that Memory bandwidth allocation(MBA) may be a core
 specific mechanism where as memory bandwidth monitoring(MBM) is done at
 the package level may lead to confusion when users try to apply control
 via the MBA and then monitor the bandwidth to see if the controls are
@@ -380,7 +394,7 @@ where L2 external  is 10GBps (hence aggregate L2 external bandwidth is
 240GBps) and L3 external bandwidth is 100GBps. Now a workload with '20
 threads, having 50% bandwidth, each consuming 5GBps' consumes the max L3
 bandwidth of 100GBps although the percentage value specified is only 50%
-<< 100%. Hence increasing the bandwidth percentage will not yeild any
+<< 100%. Hence increasing the bandwidth percentage will not yield any
 more bandwidth. This is because although the L2 external bandwidth still
 has capacity, the L3 external bandwidth is fully used. Also note that
 this would be dependent on number of cores the benchmark is run on.
@@ -398,7 +412,7 @@ In order to mitigate this and make the interface more user friendly,
 resctrl added support for specifying the bandwidth in MBps as well.  The
 kernel underneath would use a software feedback mechanism or a "Software
 Controller(mba_sc)" which reads the actual bandwidth using MBM counters
-and adjust the memowy bandwidth percentages to ensure::
+and adjust the memory bandwidth percentages to ensure::
 
 	"actual bandwidth < user specified bandwidth".
 
@@ -418,15 +432,21 @@ L3 schemata file details (CDP enabled via mount option to resctrl)
 When CDP is enabled L3 control is split into two separate resources
 so you can specify independent masks for code and data like this::
 
-	L3data:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
-	L3code:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
+	L3DATA:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
+	L3CODE:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
 
 L2 schemata file details
 ------------------------
-L2 cache does not support code and data prioritization, so the
-schemata format is always::
+CDP is supported at L2 using the 'cdpl2' mount option. The schemata
+format is either::
 
 	L2:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
+
+or
+
+	L2DATA:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
+	L2CODE:<cache_id0>=<cbm>;<cache_id1>=<cbm>;...
+
 
 Memory bandwidth Allocation (default mode)
 ------------------------------------------
@@ -671,8 +691,8 @@ allocations can overlap or not. The allocations specifies the maximum
 b/w that the group may be able to use and the system admin can configure
 the b/w accordingly.
 
-If the MBA is specified in MB(megabytes) then user can enter the max b/w in MB
-rather than the percentage values.
+If resctrl is using the software controller (mba_sc) then user can enter the
+max b/w in MB rather than the percentage values.
 ::
 
   # echo "L3:0=3;1=c\nMB:0=1024;1=500" > /sys/fs/resctrl/p0/schemata

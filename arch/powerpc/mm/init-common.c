@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *  PowerPC version
  *    Copyright (C) 1995-1996 Gary Thomas (gdt@linuxppc.org)
@@ -11,20 +12,21 @@
  *
  *  Dave Engebretsen <engebret@us.ibm.com>
  *      Rework for PPC64 port.
- *
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version
- *  2 of the License, or (at your option) any later version.
- *
  */
 
 #undef DEBUG
 
 #include <linux/string.h>
+#include <linux/pgtable.h>
 #include <asm/pgalloc.h>
-#include <asm/pgtable.h>
 #include <asm/kup.h>
+
+phys_addr_t memstart_addr __ro_after_init = (phys_addr_t)~0ull;
+EXPORT_SYMBOL_GPL(memstart_addr);
+phys_addr_t kernstart_addr __ro_after_init;
+EXPORT_SYMBOL_GPL(kernstart_addr);
+unsigned long kernstart_virt_addr __ro_after_init = KERNELBASE;
+EXPORT_SYMBOL_GPL(kernstart_virt_addr);
 
 static bool disable_kuep = !IS_ENABLED(CONFIG_PPC_KUEP);
 static bool disable_kuap = !IS_ENABLED(CONFIG_PPC_KUAP);

@@ -19,57 +19,64 @@ SYNOPSIS
 BTF COMMANDS
 =============
 
-|	**bpftool** **btf dump** *BTF_SRC*
+|	**bpftool** **btf** { **show** | **list** } [**id** *BTF_ID*]
+|	**bpftool** **btf dump** *BTF_SRC* [**format** *FORMAT*]
 |	**bpftool** **btf help**
 |
 |	*BTF_SRC* := { **id** *BTF_ID* | **prog** *PROG* | **map** *MAP* [{**key** | **value** | **kv** | **all**}] | **file** *FILE* }
+|	*FORMAT* := { **raw** | **c** }
 |	*MAP* := { **id** *MAP_ID* | **pinned** *FILE* }
 |	*PROG* := { **id** *PROG_ID* | **pinned** *FILE* | **tag** *PROG_TAG* }
 
 DESCRIPTION
 ===========
+	**bpftool btf { show | list }** [**id** *BTF_ID*]
+		  Show information about loaded BTF objects. If a BTF ID is
+		  specified, show information only about given BTF object,
+		  otherwise list all BTF objects currently loaded on the
+		  system.
+
+		  Since Linux 5.8 bpftool is able to discover information about
+		  processes that hold open file descriptors (FDs) against BTF
+		  objects. On such kernels bpftool will automatically emit this
+		  information as well.
+
 	**bpftool btf dump** *BTF_SRC*
 		  Dump BTF entries from a given *BTF_SRC*.
 
-                  When **id** is specified, BTF object with that ID will be
-                  loaded and all its BTF types emitted.
+		  When **id** is specified, BTF object with that ID will be
+		  loaded and all its BTF types emitted.
 
-                  When **map** is provided, it's expected that map has
-                  associated BTF object with BTF types describing key and
-                  value. It's possible to select whether to dump only BTF
-                  type(s) associated with key (**key**), value (**value**),
-                  both key and value (**kv**), or all BTF types present in
-                  associated BTF object (**all**). If not specified, **kv**
-                  is assumed.
+		  When **map** is provided, it's expected that map has
+		  associated BTF object with BTF types describing key and
+		  value. It's possible to select whether to dump only BTF
+		  type(s) associated with key (**key**), value (**value**),
+		  both key and value (**kv**), or all BTF types present in
+		  associated BTF object (**all**). If not specified, **kv**
+		  is assumed.
 
-                  When **prog** is provided, it's expected that program has
-                  associated BTF object with BTF types.
+		  When **prog** is provided, it's expected that program has
+		  associated BTF object with BTF types.
 
-                  When specifying *FILE*, an ELF file is expected, containing
-                  .BTF section with well-defined BTF binary format data,
-                  typically produced by clang or pahole.
+		  When specifying *FILE*, an ELF file is expected, containing
+		  .BTF section with well-defined BTF binary format data,
+		  typically produced by clang or pahole.
+
+		  **format** option can be used to override default (raw)
+		  output format. Raw (**raw**) or C-syntax (**c**) output
+		  formats are supported.
 
 	**bpftool btf help**
 		  Print short help message.
 
 OPTIONS
 =======
-	-h, --help
-		  Print short generic help message (similar to **bpftool help**).
-
-	-V, --version
-		  Print version number (similar to **bpftool version**).
-
-	-j, --json
-		  Generate JSON output. For commands that cannot produce JSON, this
-		  option has no effect.
-
-	-p, --pretty
-		  Generate human-readable JSON output. Implies **-j**.
+	.. include:: common_options.rst
 
 EXAMPLES
 ========
 **# bpftool btf dump id 1226**
+
 ::
 
   [1] PTR '(anon)' type_id=2
@@ -83,6 +90,7 @@ EXAMPLES
 This gives an example of default output for all supported BTF kinds.
 
 **$ cat prog.c**
+
 ::
 
   struct fwd_struct;
@@ -123,6 +131,7 @@ This gives an example of default output for all supported BTF kinds.
   }
 
 **$ bpftool btf dump file prog.o**
+
 ::
 
   [1] PTR '(anon)' type_id=2
@@ -208,15 +217,3 @@ All the standard ways to specify map or program are supported:
 **# bpftool btf dump prog tag b88e0a09b1d9759d**
 
 **# bpftool btf dump prog pinned /sys/fs/bpf/prog_name**
-
-SEE ALSO
-========
-	**bpf**\ (2),
-	**bpf-helpers**\ (7),
-	**bpftool**\ (8),
-	**bpftool-map**\ (8),
-	**bpftool-prog**\ (8),
-	**bpftool-cgroup**\ (8),
-	**bpftool-feature**\ (8),
-	**bpftool-net**\ (8),
-	**bpftool-perf**\ (8)

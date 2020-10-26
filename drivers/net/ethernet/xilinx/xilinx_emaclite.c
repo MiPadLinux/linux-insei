@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Xilinx EmacLite Linux driver for the Xilinx Ethernet MAC Lite device.
  *
@@ -5,11 +6,6 @@
  * driver from John Williams <john.williams@xilinx.com>.
  *
  * 2007 - 2013 (c) Xilinx, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2 of the License, or (at your
- * option) any later version.
  */
 
 #include <linux/module.h>
@@ -525,7 +521,7 @@ static int xemaclite_set_mac_address(struct net_device *dev, void *address)
  *
  * This function is called when Tx time out occurs for Emaclite device.
  */
-static void xemaclite_tx_timeout(struct net_device *dev)
+static void xemaclite_tx_timeout(struct net_device *dev, unsigned int txqueue)
 {
 	struct net_local *lp = netdev_priv(dev);
 	unsigned long flags;

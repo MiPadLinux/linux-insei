@@ -1,16 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  Copyright © 2014 Broadcom
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/seq_file.h>
 #include <linux/circ_buf.h>
 #include <linux/ctype.h>
 #include <linux/debugfs.h>
-#include <drm/drmP.h>
 
 #include "vc4_drv.h"
 #include "vc4_regs.h"
@@ -24,28 +20,19 @@ struct vc4_debugfs_info_entry {
  * Called at drm_dev_register() time on each of the minors registered
  * by the DRM device, to attach the debugfs files.
  */
-int
+void
 vc4_debugfs_init(struct drm_minor *minor)
 {
 	struct vc4_dev *vc4 = to_vc4_dev(minor->dev);
 	struct vc4_debugfs_info_entry *entry;
-	struct dentry *dentry;
 
-	dentry = debugfs_create_bool("hvs_load_tracker", S_IRUGO | S_IWUSR,
-				     minor->debugfs_root,
-				     &vc4->load_tracker_enabled);
-	if (!dentry)
-		return -ENOMEM;
+	debugfs_create_bool("hvs_load_tracker", S_IRUGO | S_IWUSR,
+			    minor->debugfs_root, &vc4->load_tracker_enabled);
 
 	list_for_each_entry(entry, &vc4->debugfs_list, link) {
-		int ret = drm_debugfs_create_files(&entry->info, 1,
-						   minor->debugfs_root, minor);
-
-		if (ret)
-			return ret;
+		drm_debugfs_create_files(&entry->info, 1,
+					 minor->debugfs_root, minor);
 	}
-
-	return 0;
 }
 
 static int vc4_debugfs_regset32(struct seq_file *m, void *unused)

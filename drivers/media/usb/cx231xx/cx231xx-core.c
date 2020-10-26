@@ -53,7 +53,7 @@ static DEFINE_MUTEX(cx231xx_devlist_mutex);
 /*
  * cx231xx_realease_resources()
  * unregisters the v4l2,i2c and usb devices
- * called when the device gets disconected or at module unload
+ * called when the device gets disconnected or at module unload
 */
 void cx231xx_remove_from_devlist(struct cx231xx *dev)
 {
@@ -115,11 +115,9 @@ void cx231xx_init_extension(struct cx231xx *dev)
 	struct cx231xx_ops *ops = NULL;
 
 	mutex_lock(&cx231xx_devlist_mutex);
-	if (!list_empty(&cx231xx_extension_devlist)) {
-		list_for_each_entry(ops, &cx231xx_extension_devlist, next) {
-			if (ops->init)
-				ops->init(dev);
-		}
+	list_for_each_entry(ops, &cx231xx_extension_devlist, next) {
+		if (ops->init)
+			ops->init(dev);
 	}
 	mutex_unlock(&cx231xx_devlist_mutex);
 }
@@ -129,11 +127,9 @@ void cx231xx_close_extension(struct cx231xx *dev)
 	struct cx231xx_ops *ops = NULL;
 
 	mutex_lock(&cx231xx_devlist_mutex);
-	if (!list_empty(&cx231xx_extension_devlist)) {
-		list_for_each_entry(ops, &cx231xx_extension_devlist, next) {
-			if (ops->fini)
-				ops->fini(dev);
-		}
+	list_for_each_entry(ops, &cx231xx_extension_devlist, next) {
+		if (ops->fini)
+			ops->fini(dev);
 	}
 	mutex_unlock(&cx231xx_devlist_mutex);
 }

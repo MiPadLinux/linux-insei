@@ -1,22 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Intel MIC Platform Software Stack (MPSS)
  *
  * Copyright(c) 2013 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
  * Intel MIC Host driver.
- *
  */
 #ifndef _MIC_X100_HW_H_
 #define _MIC_X100_HW_H_
@@ -78,15 +66,6 @@
 #define MIC_X100_DOWNLOAD_INFO 2
 #define MIC_X100_FW_SIZE 5
 #define MIC_X100_POSTCODE 0x242c
-
-static const u16 mic_x100_intr_init[] = {
-		MIC_X100_DOORBELL_IDX_START,
-		MIC_X100_DMA_IDX_START,
-		MIC_X100_ERR_IDX_START,
-		MIC_X100_NUM_DOORBELL,
-		MIC_X100_NUM_DMA,
-		MIC_X100_NUM_ERR,
-};
 
 /* Host->Card(bootstrap) Interrupt Vector */
 #define MIC_X100_BSP_INTERRUPT_VECTOR 229

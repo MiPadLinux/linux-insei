@@ -8,14 +8,11 @@
 
 #define ICE_SW_CFG_MAX_BUF_LEN 2048
 #define ICE_DFLT_VSI_INVAL 0xff
+#define ICE_FLTR_RX BIT(0)
+#define ICE_FLTR_TX BIT(1)
+#define ICE_FLTR_TX_RX (ICE_FLTR_RX | ICE_FLTR_TX)
 #define ICE_VSI_INVAL_ID 0xffff
 #define ICE_INVAL_Q_HANDLE 0xFFFF
-#define ICE_INVAL_Q_HANDLE 0xFFFF
-
-/* VSI queue context structure */
-struct ice_q_ctx {
-	u16  q_handle;
-};
 
 /* VSI context structure for add/get/update/free operations */
 struct ice_vsi_ctx {
@@ -69,9 +66,6 @@ struct ice_fltr_info {
 	/* rule ID returned by firmware once filter rule is created */
 	u16 fltr_rule_id;
 	u16 flag;
-#define ICE_FLTR_RX		BIT(0)
-#define ICE_FLTR_TX		BIT(1)
-#define ICE_FLTR_TX_RX		(ICE_FLTR_RX | ICE_FLTR_TX)
 
 	/* Source VSI for LOOKUP_TX or source port for LOOKUP_RX */
 	u16 src;
@@ -213,6 +207,13 @@ struct ice_vsi_ctx *ice_get_vsi_ctx(struct ice_hw *hw, u16 vsi_handle);
 void ice_clear_all_vsi_ctx(struct ice_hw *hw);
 /* Switch config */
 enum ice_status ice_get_initial_sw_cfg(struct ice_hw *hw);
+
+enum ice_status
+ice_alloc_res_cntr(struct ice_hw *hw, u8 type, u8 alloc_shared, u16 num_items,
+		   u16 *counter_id);
+enum ice_status
+ice_free_res_cntr(struct ice_hw *hw, u8 type, u8 alloc_shared, u16 num_items,
+		  u16 counter_id);
 
 /* Switch/bridge related commands */
 enum ice_status ice_update_sw_rule_bridge_mode(struct ice_hw *hw);

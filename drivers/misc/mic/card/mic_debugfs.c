@@ -1,19 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Intel MIC Platform Software Stack (MPSS)
  *
  * Copyright(c) 2013 Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
  *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed: Knights Ferry, and
@@ -22,7 +11,6 @@
  * support the codes or instruction set in future products.
  *
  * Intel MIC Card driver.
- *
  */
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -36,7 +24,7 @@
 /* Debugfs parent dir */
 static struct dentry *mic_dbg;
 
-/**
+/*
  * mic_intr_show - Send interrupts to host.
  */
 static int mic_intr_show(struct seq_file *s, void *unused)
@@ -58,54 +46,37 @@ static int mic_intr_show(struct seq_file *s, void *unused)
 
 DEFINE_SHOW_ATTRIBUTE(mic_intr);
 
-/**
+/*
  * mic_create_card_debug_dir - Initialize MIC debugfs entries.
  */
 void __init mic_create_card_debug_dir(struct mic_driver *mdrv)
 {
-	struct dentry *d;
-
 	if (!mic_dbg)
 		return;
 
 	mdrv->dbg_dir = debugfs_create_dir(mdrv->name, mic_dbg);
-	if (!mdrv->dbg_dir) {
-		dev_err(mdrv->dev, "Cant create dbg_dir %s\n", mdrv->name);
-		return;
-	}
 
-	d = debugfs_create_file("intr_test", 0444, mdrv->dbg_dir,
-		mdrv, &mic_intr_fops);
-
-	if (!d) {
-		dev_err(mdrv->dev,
-			"Cant create dbg intr_test %s\n", mdrv->name);
-		return;
-	}
+	debugfs_create_file("intr_test", 0444, mdrv->dbg_dir, mdrv,
+			    &mic_intr_fops);
 }
 
-/**
+/*
  * mic_delete_card_debug_dir - Uninitialize MIC debugfs entries.
  */
 void mic_delete_card_debug_dir(struct mic_driver *mdrv)
 {
-	if (!mdrv->dbg_dir)
-		return;
-
 	debugfs_remove_recursive(mdrv->dbg_dir);
 }
 
-/**
+/*
  * mic_init_card_debugfs - Initialize global debugfs entry.
  */
 void __init mic_init_card_debugfs(void)
 {
 	mic_dbg = debugfs_create_dir(KBUILD_MODNAME, NULL);
-	if (!mic_dbg)
-		pr_err("can't create debugfs dir\n");
 }
 
-/**
+/*
  * mic_exit_card_debugfs - Uninitialize global debugfs entry
  */
 void mic_exit_card_debugfs(void)

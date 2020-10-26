@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright 2007-2008 Extreme Engineering Solutions, Inc.
  *
  * Author: Nate Case <ncase@xes-inc.com>
- *
- * This file is subject to the terms and conditions of version 2 of
- * the GNU General Public License.  See the file COPYING in the main
- * directory of this archive for more details.
  *
  * LED driver for various PCA955x I2C LED drivers
  *
@@ -43,7 +40,7 @@
 #include <linux/ctype.h>
 #include <linux/delay.h>
 #include <linux/err.h>
-#include <linux/gpio.h>
+#include <linux/gpio/driver.h>
 #include <linux/i2c.h>
 #include <linux/leds.h>
 #include <linux/module.h>
@@ -68,6 +65,7 @@ enum pca955x_type {
 	pca9550,
 	pca9551,
 	pca9552,
+	ibm_pca9552,
 	pca9553,
 };
 
@@ -93,6 +91,11 @@ static struct pca955x_chipdef pca955x_chipdefs[] = {
 		.slv_addr	= /* 1100xxx */ 0x60,
 		.slv_addr_shift	= 3,
 	},
+	[ibm_pca9552] = {
+		.bits		= 16,
+		.slv_addr	= /* 0110xxx */ 0x30,
+		.slv_addr_shift	= 3,
+	},
 	[pca9553] = {
 		.bits		= 4,
 		.slv_addr	= /* 110001x */ 0x62,
@@ -104,6 +107,7 @@ static const struct i2c_device_id pca955x_id[] = {
 	{ "pca9550", pca9550 },
 	{ "pca9551", pca9551 },
 	{ "pca9552", pca9552 },
+	{ "ibm-pca9552", ibm_pca9552 },
 	{ "pca9553", pca9553 },
 	{ }
 };
@@ -415,6 +419,7 @@ static const struct of_device_id of_pca955x_match[] = {
 	{ .compatible = "nxp,pca9550", .data = (void *)pca9550 },
 	{ .compatible = "nxp,pca9551", .data = (void *)pca9551 },
 	{ .compatible = "nxp,pca9552", .data = (void *)pca9552 },
+	{ .compatible = "ibm,pca9552", .data = (void *)ibm_pca9552 },
 	{ .compatible = "nxp,pca9553", .data = (void *)pca9553 },
 	{},
 };
@@ -432,7 +437,7 @@ static int pca955x_probe(struct i2c_client *client,
 	int ngpios = 0;
 
 	chip = &pca955x_chipdefs[id->driver_data];
-	adapter = to_i2c_adapter(client->dev.parent);
+	adapter = client->adapter;
 	pdata = dev_get_platdata(&client->dev);
 	if (!pdata) {
 		pdata =	pca955x_get_pdata(client, chip);

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Bosch BMC150 three-axis magnetic field sensor driver
  *
@@ -6,15 +7,6 @@
  * This code is based on bmm050_api.c authored by contact@bosch.sensortec.com:
  *
  * (C) Copyright 2011~2014 Bosch Sensortec GmbH All Rights Reserved
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 #include <linux/module.h>
@@ -844,8 +836,6 @@ static int bmc150_magn_buffer_postdisable(struct iio_dev *indio_dev)
 
 static const struct iio_buffer_setup_ops bmc150_magn_buffer_setup_ops = {
 	.preenable = bmc150_magn_buffer_preenable,
-	.postenable = iio_triggered_buffer_postenable,
-	.predisable = iio_triggered_buffer_predisable,
 	.postdisable = bmc150_magn_buffer_postdisable,
 };
 
@@ -891,7 +881,6 @@ int bmc150_magn_probe(struct device *dev, struct regmap *regmap,
 	if (ret < 0)
 		return ret;
 
-	indio_dev->dev.parent = dev;
 	indio_dev->channels = bmc150_magn_channels;
 	indio_dev->num_channels = ARRAY_SIZE(bmc150_magn_channels);
 	indio_dev->available_scan_masks = bmc150_magn_scan_masks;

@@ -1,14 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * The AEGIS-128 Authenticated-Encryption Algorithm
  *   Glue for AES-NI + SSE2 implementation
  *
  * Copyright (c) 2017-2018 Ondrej Mosnacek <omosnacek@gmail.com>
  * Copyright (C) 2017-2018 Red Hat, Inc. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
  */
 
 #include <crypto/internal/aead.h>
@@ -148,10 +144,8 @@ static int crypto_aegis128_aesni_setkey(struct crypto_aead *aead, const u8 *key,
 {
 	struct aegis_ctx *ctx = crypto_aegis128_aesni_ctx(aead);
 
-	if (keylen != AEGIS128_KEY_SIZE) {
-		crypto_aead_set_flags(aead, CRYPTO_TFM_RES_BAD_KEY_LEN);
+	if (keylen != AEGIS128_KEY_SIZE)
 		return -EINVAL;
-	}
 
 	memcpy(ctx->key.bytes, key, AEGIS128_KEY_SIZE);
 

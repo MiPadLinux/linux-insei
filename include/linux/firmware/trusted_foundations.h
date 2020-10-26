@@ -1,15 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright (c) 2013, NVIDIA Corporation.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 /*
@@ -41,6 +32,7 @@
 #define TF_PM_MODE_LP1_NO_MC_CLK	2
 #define TF_PM_MODE_LP2			3
 #define TF_PM_MODE_LP2_NOFLUSH_L2	4
+#define TF_PM_MODE_NONE			5
 
 struct trusted_foundations_platform_data {
 	unsigned int version_major;

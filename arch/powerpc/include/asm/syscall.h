@@ -1,11 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Access to user system call parameters and results
  *
  * Copyright (C) 2008 Red Hat, Inc.  All rights reserved.
- *
- * This copyrighted material is made available to anyone wishing to use,
- * modify, copy, or redistribute it subject to the terms and conditions
- * of the GNU General Public License v.2.
  *
  * See asm-generic/syscall.h for descriptions of what we must do here.
  */
@@ -29,13 +26,26 @@ static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
 	 * This is important for seccomp so that compat tasks can set r0 = -1
 	 * to reject the syscall.
 	 */
-	return TRAP(regs) == 0xc00 ? regs->gpr[0] : -1;
+	if (trap_is_syscall(regs))
+		return regs->gpr[0];
+	else
+		return -1;
 }
 
 static inline void syscall_rollback(struct task_struct *task,
 				    struct pt_regs *regs)
 {
 	regs->gpr[3] = regs->orig_gpr3;
+}
+
+static inline long syscall_get_error(struct task_struct *task,
+				     struct pt_regs *regs)
+{
+	/*
+	 * If the system call failed,
+	 * regs->gpr[3] contains a positive ERRORCODE.
+	 */
+	return (regs->ccr & 0x10000000UL) ? -regs->gpr[3] : 0;
 }
 
 static inline long syscall_get_return_value(struct task_struct *task,

@@ -167,7 +167,7 @@ static int multi_reg_write(struct i2c_client *client,
 
 static int mt9m001_init(struct i2c_client *client)
 {
-	const struct mt9m001_reg init_regs[] = {
+	static const struct mt9m001_reg init_regs[] = {
 		/*
 		 * Issue a soft reset. This returns all registers to their
 		 * default values.
@@ -689,8 +689,9 @@ static int mt9m001_enum_mbus_code(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int mt9m001_g_mbus_config(struct v4l2_subdev *sd,
-				struct v4l2_mbus_config *cfg)
+static int mt9m001_get_mbus_config(struct v4l2_subdev *sd,
+				   unsigned int pad,
+				   struct v4l2_mbus_config *cfg)
 {
 	/* MT9M001 has all capture_format parameters fixed */
 	cfg->flags = V4L2_MBUS_PCLK_SAMPLE_FALLING |
@@ -703,7 +704,6 @@ static int mt9m001_g_mbus_config(struct v4l2_subdev *sd,
 
 static const struct v4l2_subdev_video_ops mt9m001_subdev_video_ops = {
 	.s_stream	= mt9m001_s_stream,
-	.g_mbus_config	= mt9m001_g_mbus_config,
 };
 
 static const struct v4l2_subdev_sensor_ops mt9m001_subdev_sensor_ops = {
@@ -717,6 +717,7 @@ static const struct v4l2_subdev_pad_ops mt9m001_subdev_pad_ops = {
 	.set_selection	= mt9m001_set_selection,
 	.get_fmt	= mt9m001_get_fmt,
 	.set_fmt	= mt9m001_set_fmt,
+	.get_mbus_config = mt9m001_get_mbus_config,
 };
 
 static const struct v4l2_subdev_ops mt9m001_subdev_ops = {
@@ -726,11 +727,10 @@ static const struct v4l2_subdev_ops mt9m001_subdev_ops = {
 	.pad	= &mt9m001_subdev_pad_ops,
 };
 
-static int mt9m001_probe(struct i2c_client *client,
-			 const struct i2c_device_id *did)
+static int mt9m001_probe(struct i2c_client *client)
 {
 	struct mt9m001 *mt9m001;
-	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
+	struct i2c_adapter *adapter = client->adapter;
 	int ret;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_WORD_DATA)) {
@@ -872,7 +872,7 @@ static struct i2c_driver mt9m001_i2c_driver = {
 		.pm = &mt9m001_pm_ops,
 		.of_match_table = mt9m001_of_match,
 	},
-	.probe		= mt9m001_probe,
+	.probe_new	= mt9m001_probe,
 	.remove		= mt9m001_remove,
 	.id_table	= mt9m001_id,
 };

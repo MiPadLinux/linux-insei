@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Driver for Broadcom BCM2835 auxiliary SPI Controllers
  *
@@ -7,16 +8,6 @@
  * Based on: spi-bcm2835.c
  *
  * Copyright (C) 2015 Martin Sperl
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/clk.h>
@@ -173,10 +164,10 @@ static inline void bcm2835aux_rd_fifo(struct bcm2835aux_spi *bs)
 		switch (count) {
 		case 3:
 			*bs->rx_buf++ = (data >> 16) & 0xff;
-			/* fallthrough */
+			fallthrough;
 		case 2:
 			*bs->rx_buf++ = (data >> 8) & 0xff;
-			/* fallthrough */
+			fallthrough;
 		case 1:
 			*bs->rx_buf++ = (data >> 0) & 0xff;
 			/* fallthrough - no default */
@@ -354,7 +345,7 @@ static int bcm2835aux_spi_transfer_one(struct spi_master *master,
 				       struct spi_transfer *tfr)
 {
 	struct bcm2835aux_spi *bs = spi_master_get_devdata(master);
-	unsigned long spi_hz, clk_hz, speed, spi_used_hz;
+	unsigned long spi_hz, clk_hz, speed;
 	unsigned long hz_per_byte, byte_limit;
 
 	/* calculate the registers to handle
@@ -383,7 +374,7 @@ static int bcm2835aux_spi_transfer_one(struct spi_master *master,
 	/* set the new speed */
 	bs->cntl[0] |= speed << BCM2835_AUX_SPI_CNTL0_SPEED_SHIFT;
 
-	spi_used_hz = clk_hz / (2 * (speed + 1));
+	tfr->effective_speed_hz = clk_hz / (2 * (speed + 1));
 
 	/* set transmit buffers and length */
 	bs->tx_buf = tfr->tx_buf;
@@ -400,7 +391,7 @@ static int bcm2835aux_spi_transfer_one(struct spi_master *master,
 	 * 30 µs per 300,000 Hz of bus clock.
 	 */
 	hz_per_byte = polling_limit_us ? (9 * 1000000) / polling_limit_us : 0;
-	byte_limit = hz_per_byte ? spi_used_hz / hz_per_byte : 1;
+	byte_limit = hz_per_byte ? tfr->effective_speed_hz / hz_per_byte : 1;
 
 	/* run in polling mode for short transfers */
 	if (tfr->len < byte_limit)
@@ -500,15 +491,12 @@ static int bcm2835aux_spi_probe(struct platform_device *pdev)
 {
 	struct spi_master *master;
 	struct bcm2835aux_spi *bs;
-	struct resource *res;
 	unsigned long clk_hz;
 	int err;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*bs));
-	if (!master) {
-		dev_err(&pdev->dev, "spi_alloc_master() failed\n");
+	if (!master)
 		return -ENOMEM;
-	}
 
 	platform_set_drvdata(pdev, master);
 	master->mode_bits = (SPI_CPOL | SPI_CS_HIGH | SPI_NO_CS);
@@ -535,8 +523,7 @@ static int bcm2835aux_spi_probe(struct platform_device *pdev)
 	bs = spi_master_get_devdata(master);
 
 	/* the main area */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	bs->regs = devm_ioremap_resource(&pdev->dev, res);
+	bs->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(bs->regs)) {
 		err = PTR_ERR(bs->regs);
 		goto out_master_put;
@@ -551,7 +538,6 @@ static int bcm2835aux_spi_probe(struct platform_device *pdev)
 
 	bs->irq = platform_get_irq(pdev, 0);
 	if (bs->irq <= 0) {
-		dev_err(&pdev->dev, "could not get IRQ: %d\n", bs->irq);
 		err = bs->irq ? bs->irq : -ENODEV;
 		goto out_master_put;
 	}
@@ -583,7 +569,7 @@ static int bcm2835aux_spi_probe(struct platform_device *pdev)
 		goto out_clk_disable;
 	}
 
-	err = devm_spi_register_master(&pdev->dev, master);
+	err = spi_register_master(master);
 	if (err) {
 		dev_err(&pdev->dev, "could not register SPI master: %d\n", err);
 		goto out_clk_disable;
@@ -606,6 +592,8 @@ static int bcm2835aux_spi_remove(struct platform_device *pdev)
 	struct bcm2835aux_spi *bs = spi_master_get_devdata(master);
 
 	bcm2835aux_debugfs_remove(bs);
+
+	spi_unregister_master(master);
 
 	bcm2835aux_spi_reset_hw(bs);
 

@@ -15,7 +15,7 @@ characteristics.  Some memory may share the same node as a CPU, and others
 are provided as memory only nodes. While memory only nodes do not provide
 CPUs, they may still be local to one or more compute nodes relative to
 other nodes. The following diagram shows one such example of two compute
-nodes with local memory and a memory only node for each of compute node:
+nodes with local memory and a memory only node for each of compute node::
 
  +------------------+     +------------------+
  | Compute Node 0   +-----+ Compute Node 1   |
@@ -56,6 +56,11 @@ nodes' access characteristics share the same performance relative to other
 linked initiator nodes. Each target within an initiator's access class,
 though, do not necessarily perform the same as each other.
 
+The access class "1" is used to allow differentiation between initiators
+that are CPUs and hence suitable for generic task scheduling, and
+IO initiators such as GPUs and NICs.  Unlike access class 0, only
+nodes containing CPUs are considered.
+
 ================
 NUMA Performance
 ================
@@ -87,6 +92,9 @@ The latency attributes are provided in nanoseconds.
 
 The values reported here correspond to the rated latency and bandwidth
 for the platform.
+
+Access class 1 takes the same form but only includes values for CPU to
+memory activity.
 
 ==========
 NUMA Cache
@@ -129,7 +137,7 @@ will create the following directory::
 
 	/sys/devices/system/node/nodeX/memory_side_cache/
 
-If that directory is not present, the system either does not not provide
+If that directory is not present, the system either does not provide
 a memory-side cache, or that information is not accessible to the kernel.
 
 The attributes for each level of cache is provided under its cache
@@ -165,5 +173,6 @@ write-through caching.
 ========
 See Also
 ========
-.. [1] https://www.uefi.org/sites/default/files/resources/ACPI_6_2.pdf
-       Section 5.2.27
+
+[1] https://www.uefi.org/sites/default/files/resources/ACPI_6_2.pdf
+- Section 5.2.27

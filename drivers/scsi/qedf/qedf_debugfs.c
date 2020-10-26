@@ -1,10 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  QLogic FCoE Offload Driver
  *  Copyright (c) 2016-2018 QLogic Corporation
- *
- *  This software is available under the terms of the GNU General Public License
- *  (GPL) Version 2, available from the file COPYING in the main directory of
- *  this source tree.
  */
 #ifdef CONFIG_DEBUG_FS
 
@@ -17,10 +14,9 @@
 
 static struct dentry *qedf_dbg_root;
 
-/**
+/*
  * qedf_dbg_host_init - setup the debugfs file for the pf
- * @pf: the pf that is starting up
- **/
+ */
 void
 qedf_dbg_host_init(struct qedf_dbg_ctx *qedf,
 		    const struct qedf_debugfs_ops *dops,
@@ -45,23 +41,22 @@ qedf_dbg_host_init(struct qedf_dbg_ctx *qedf,
 	}
 }
 
-/**
+/*
  * qedf_dbg_host_exit - clear out the pf's debugfs entries
- * @pf: the pf that is stopping
- **/
+ */
 void
-qedf_dbg_host_exit(struct qedf_dbg_ctx *qedf)
+qedf_dbg_host_exit(struct qedf_dbg_ctx *qedf_dbg)
 {
-	QEDF_INFO(qedf, QEDF_LOG_DEBUGFS, "Destroying debugfs host "
+	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "Destroying debugfs host "
 		   "entry\n");
 	/* remove debugfs  entries of this PF */
-	debugfs_remove_recursive(qedf->bdf_dentry);
-	qedf->bdf_dentry = NULL;
+	debugfs_remove_recursive(qedf_dbg->bdf_dentry);
+	qedf_dbg->bdf_dentry = NULL;
 }
 
-/**
+/*
  * qedf_dbg_init - start up debugfs for the driver
- **/
+ */
 void
 qedf_dbg_init(char *drv_name)
 {
@@ -71,9 +66,9 @@ qedf_dbg_init(char *drv_name)
 	qedf_dbg_root = debugfs_create_dir(drv_name, NULL);
 }
 
-/**
+/*
  * qedf_dbg_exit - clean out the driver's debugfs entries
- **/
+ */
 void
 qedf_dbg_exit(void)
 {
@@ -143,10 +138,10 @@ qedf_dbg_debug_cmd_read(struct file *filp, char __user *buffer, size_t count,
 			loff_t *ppos)
 {
 	int cnt;
-	struct qedf_dbg_ctx *qedf =
+	struct qedf_dbg_ctx *qedf_dbg =
 				(struct qedf_dbg_ctx *)filp->private_data;
 
-	QEDF_INFO(qedf, QEDF_LOG_DEBUGFS, "entered\n");
+	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "debug mask=0x%x\n", qedf_debug);
 	cnt = sprintf(buffer, "debug mask = 0x%x\n", qedf_debug);
 
 	cnt = min_t(int, count, cnt - *ppos);
@@ -161,7 +156,7 @@ qedf_dbg_debug_cmd_write(struct file *filp, const char __user *buffer,
 	uint32_t val;
 	void *kern_buf;
 	int rval;
-	struct qedf_dbg_ctx *qedf =
+	struct qedf_dbg_ctx *qedf_dbg =
 	    (struct qedf_dbg_ctx *)filp->private_data;
 
 	if (!count || *ppos)
@@ -181,7 +176,7 @@ qedf_dbg_debug_cmd_write(struct file *filp, const char __user *buffer,
 	else
 		qedf_debug = val;
 
-	QEDF_INFO(qedf, QEDF_LOG_DEBUGFS, "Setting debug=0x%x.\n", val);
+	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "Setting debug=0x%x.\n", val);
 	return count;
 }
 

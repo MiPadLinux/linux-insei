@@ -1,6 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright 2014, Michael Ellerman, IBM Corp.
- * Licensed under GPLv2.
  */
 
 #ifndef _SELFTESTS_POWERPC_REG_H
@@ -56,6 +56,12 @@
 #define SPRN_DSCR      0x03	/* Data Stream Control Register */
 #define SPRN_PPR       896	/* Program Priority Register */
 #define SPRN_AMR       13	/* Authority Mask Register - problem state */
+
+#define set_amr(v)	asm volatile("isync;" \
+				     "mtspr " __stringify(SPRN_AMR) ",%0;" \
+				     "isync" : \
+				    : "r" ((unsigned long)(v)) \
+				    : "memory")
 
 /* TEXASR register bits */
 #define TEXASR_FC	0xFE00000000000000

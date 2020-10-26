@@ -41,7 +41,7 @@ NESTED(handle_sys, PT_SIZE, sp)
 #if 0
  SAVE_ALL
  move a1, v0
- PRINT("Scall %ld\n")
+ ASM_PRINT("Scall %ld\n")
  RESTORE_ALL
 #endif
 
@@ -213,7 +213,7 @@ einval: li	v0, -ENOSYS
 	jr	ra
 	END(sys32_syscall)
 
-#define __SYSCALL(nr, entry, nargs) PTR entry
+#define __SYSCALL(nr, entry)	PTR entry
 	.align	3
 	.type	sys32_call_table,@object
 EXPORT(sys32_call_table)

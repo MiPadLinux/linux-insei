@@ -1,19 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Intel MIC Platform Software Stack (MPSS)
  *
  * Copyright(c) 2014 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
  * Intel SCIF driver.
- *
  */
 #include <linux/idr.h>
 
@@ -23,11 +14,11 @@
 
 struct idr scif_ports;
 
-/*
+/**
  * struct scif_port - SCIF port information
  *
- * @ref_cnt - Reference count since there can be multiple endpoints
- *		created via scif_accept(..) simultaneously using a port.
+ * @ref_cnt:  Reference count since there can be multiple endpoints
+ *	      created via scif_accept(..) simultaneously using a port.
  */
 struct scif_port {
 	int ref_cnt;
@@ -36,7 +27,8 @@ struct scif_port {
 /**
  * __scif_get_port - Reserve a specified port # for SCIF and add it
  * to the global list.
- * @port : port # to be reserved.
+ * @start: lowest port # to be reserved (inclusive).
+ * @end:   highest port # to be reserved (exclusive).
  *
  * @return : Allocated SCIF port #, or -ENOSPC if port unavailable.
  *		On memory allocation failure, returns -ENOMEM.

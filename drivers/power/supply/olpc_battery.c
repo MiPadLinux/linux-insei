@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Battery driver for One Laptop Per Child board.
  *
  *	Copyright © 2006-2010  David Woodhouse <dwmw2@infradead.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/kernel.h>
@@ -20,7 +17,6 @@
 #include <linux/jiffies.h>
 #include <linux/sched.h>
 #include <linux/olpc-ec.h>
-#include <asm/olpc.h>
 
 
 #define EC_BAT_VOLTAGE	0x10	/* uint16_t,	*9.76/32,    mV   */
@@ -92,7 +88,7 @@ static enum power_supply_property olpc_ac_props[] = {
 };
 
 static const struct power_supply_desc olpc_ac_desc = {
-	.name = "olpc-ac",
+	.name = "olpc_ac",
 	.type = POWER_SUPPLY_TYPE_MAINS,
 	.properties = olpc_ac_props,
 	.num_properties = ARRAY_SIZE(olpc_ac_props),
@@ -609,7 +605,7 @@ static const struct attribute_group *olpc_bat_sysfs_groups[] = {
  *********************************************************************/
 
 static struct power_supply_desc olpc_bat_desc = {
-	.name = "olpc-battery",
+	.name = "olpc_battery",
 	.get_property = olpc_bat_get_property,
 	.use_for_apm = 1,
 };

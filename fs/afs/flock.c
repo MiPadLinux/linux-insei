@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* AFS file locking support
  *
  * Copyright (C) 2007 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or (at your option) any later version.
  */
 
 #include "internal.h"
@@ -74,7 +70,8 @@ static void afs_schedule_lock_extension(struct afs_vnode *vnode)
  */
 void afs_lock_op_done(struct afs_call *call)
 {
-	struct afs_vnode *vnode = call->lvnode;
+	struct afs_operation *op = call->op;
+	struct afs_vnode *vnode = op->file[0].vnode;
 
 	if (call->error == 0) {
 		spin_lock(&vnode->lock);
@@ -176,15 +173,26 @@ static void afs_kill_lockers_enoent(struct afs_vnode *vnode)
 	vnode->lock_key = NULL;
 }
 
+static void afs_lock_success(struct afs_operation *op)
+{
+	_enter("op=%08x", op->debug_id);
+	afs_vnode_commit_status(op, &op->file[0]);
+}
+
+static const struct afs_operation_ops afs_set_lock_operation = {
+	.issue_afs_rpc	= afs_fs_set_lock,
+	.issue_yfs_rpc	= yfs_fs_set_lock,
+	.success	= afs_lock_success,
+	.aborted	= afs_check_for_remote_deletion,
+};
+
 /*
  * Get a lock on a file
  */
 static int afs_set_lock(struct afs_vnode *vnode, struct key *key,
 			afs_lock_type_t type)
 {
-	struct afs_status_cb *scb;
-	struct afs_fs_cursor fc;
-	int ret;
+	struct afs_operation *op;
 
 	_enter("%s{%llx:%llu.%u},%x,%u",
 	       vnode->volume->name,
@@ -193,35 +201,29 @@ static int afs_set_lock(struct afs_vnode *vnode, struct key *key,
 	       vnode->fid.unique,
 	       key_serial(key), type);
 
-	scb = kzalloc(sizeof(struct afs_status_cb), GFP_KERNEL);
-	if (!scb)
-		return -ENOMEM;
+	op = afs_alloc_operation(key, vnode->volume);
+	if (IS_ERR(op))
+		return PTR_ERR(op);
 
-	ret = -ERESTARTSYS;
-	if (afs_begin_vnode_operation(&fc, vnode, key, true)) {
-		while (afs_select_fileserver(&fc)) {
-			fc.cb_break = afs_calc_vnode_cb_break(vnode);
-			afs_fs_set_lock(&fc, type, scb);
-		}
+	afs_op_set_vnode(op, 0, vnode);
 
-		afs_check_for_remote_deletion(&fc, vnode);
-		afs_vnode_commit_status(&fc, vnode, fc.cb_break, NULL, scb);
-		ret = afs_end_vnode_operation(&fc);
-	}
-
-	kfree(scb);
-	_leave(" = %d", ret);
-	return ret;
+	op->lock.type	= type;
+	op->ops		= &afs_set_lock_operation;
+	return afs_do_sync_operation(op);
 }
+
+static const struct afs_operation_ops afs_extend_lock_operation = {
+	.issue_afs_rpc	= afs_fs_extend_lock,
+	.issue_yfs_rpc	= yfs_fs_extend_lock,
+	.success	= afs_lock_success,
+};
 
 /*
  * Extend a lock on a file
  */
 static int afs_extend_lock(struct afs_vnode *vnode, struct key *key)
 {
-	struct afs_status_cb *scb;
-	struct afs_fs_cursor fc;
-	int ret;
+	struct afs_operation *op;
 
 	_enter("%s{%llx:%llu.%u},%x",
 	       vnode->volume->name,
@@ -230,35 +232,29 @@ static int afs_extend_lock(struct afs_vnode *vnode, struct key *key)
 	       vnode->fid.unique,
 	       key_serial(key));
 
-	scb = kzalloc(sizeof(struct afs_status_cb), GFP_KERNEL);
-	if (!scb)
-		return -ENOMEM;
+	op = afs_alloc_operation(key, vnode->volume);
+	if (IS_ERR(op))
+		return PTR_ERR(op);
 
-	ret = -ERESTARTSYS;
-	if (afs_begin_vnode_operation(&fc, vnode, key, false)) {
-		while (afs_select_current_fileserver(&fc)) {
-			fc.cb_break = afs_calc_vnode_cb_break(vnode);
-			afs_fs_extend_lock(&fc, scb);
-		}
+	afs_op_set_vnode(op, 0, vnode);
 
-		afs_check_for_remote_deletion(&fc, vnode);
-		afs_vnode_commit_status(&fc, vnode, fc.cb_break, NULL, scb);
-		ret = afs_end_vnode_operation(&fc);
-	}
-
-	kfree(scb);
-	_leave(" = %d", ret);
-	return ret;
+	op->flags	|= AFS_OPERATION_UNINTR;
+	op->ops		= &afs_extend_lock_operation;
+	return afs_do_sync_operation(op);
 }
+
+static const struct afs_operation_ops afs_release_lock_operation = {
+	.issue_afs_rpc	= afs_fs_release_lock,
+	.issue_yfs_rpc	= yfs_fs_release_lock,
+	.success	= afs_lock_success,
+};
 
 /*
  * Release a lock on a file
  */
 static int afs_release_lock(struct afs_vnode *vnode, struct key *key)
 {
-	struct afs_status_cb *scb;
-	struct afs_fs_cursor fc;
-	int ret;
+	struct afs_operation *op;
 
 	_enter("%s{%llx:%llu.%u},%x",
 	       vnode->volume->name,
@@ -267,25 +263,15 @@ static int afs_release_lock(struct afs_vnode *vnode, struct key *key)
 	       vnode->fid.unique,
 	       key_serial(key));
 
-	scb = kzalloc(sizeof(struct afs_status_cb), GFP_KERNEL);
-	if (!scb)
-		return -ENOMEM;
+	op = afs_alloc_operation(key, vnode->volume);
+	if (IS_ERR(op))
+		return PTR_ERR(op);
 
-	ret = -ERESTARTSYS;
-	if (afs_begin_vnode_operation(&fc, vnode, key, false)) {
-		while (afs_select_current_fileserver(&fc)) {
-			fc.cb_break = afs_calc_vnode_cb_break(vnode);
-			afs_fs_release_lock(&fc, scb);
-		}
+	afs_op_set_vnode(op, 0, vnode);
 
-		afs_check_for_remote_deletion(&fc, vnode);
-		afs_vnode_commit_status(&fc, vnode, fc.cb_break, NULL, scb);
-		ret = afs_end_vnode_operation(&fc);
-	}
-
-	kfree(scb);
-	_leave(" = %d", ret);
-	return ret;
+	op->flags	|= AFS_OPERATION_UNINTR;
+	op->ops		= &afs_release_lock_operation;
+	return afs_do_sync_operation(op);
 }
 
 /*
@@ -350,8 +336,8 @@ again:
 		if (ret < 0) {
 			trace_afs_flock_ev(vnode, NULL, afs_flock_extend_fail,
 					   ret);
-			pr_warning("AFS: Failed to extend lock on {%llx:%llx} error %d\n",
-				   vnode->fid.vid, vnode->fid.vnode, ret);
+			pr_warn("AFS: Failed to extend lock on {%llx:%llx} error %d\n",
+				vnode->fid.vid, vnode->fid.vnode, ret);
 		}
 
 		spin_lock(&vnode->lock);
@@ -390,7 +376,6 @@ again:
 		spin_unlock(&vnode->lock);
 		return;
 
-		/* Fall through */
 	default:
 		/* Looks like a lock request was withdrawn. */
 		spin_unlock(&vnode->lock);

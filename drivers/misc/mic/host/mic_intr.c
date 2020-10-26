@@ -1,22 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Intel MIC Platform Software Stack (MPSS)
  *
  * Copyright(c) 2013 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
  * Intel MIC Host driver.
- *
  */
 #include <linux/pci.h>
 #include <linux/interrupt.h>
@@ -49,6 +37,8 @@ static irqreturn_t mic_thread_fn(int irq, void *dev)
 /**
  * mic_interrupt - Generic interrupt handler for
  * MSI and INTx based interrupts.
+ * @irq:  interrupt to handle (unused)
+ * @dev: pointer to the mic_device instance
  */
 static irqreturn_t mic_interrupt(int irq, void *dev)
 {
@@ -192,7 +182,7 @@ static u8 mic_unregister_intr_callback(struct mic_device *mdev, u32 idx)
  * mic_setup_msix - Initializes MSIx interrupts.
  *
  * @mdev: pointer to mic_device instance
- *
+ * @pdev: PCI device structure
  *
  * RETURNS: An appropriate -ERRNO error value on error, or zero for success.
  */

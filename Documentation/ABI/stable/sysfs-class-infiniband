@@ -258,23 +258,6 @@ Description:
 		userspace ABI compatibility of umad & issm devices.
 
 
-What:		/sys/class/infiniband_cm/ucmN/ibdev
-Date:		Oct, 2005
-KernelVersion:	v2.6.14
-Contact:	linux-rdma@vger.kernel.org
-Description:
-		(RO) Display Infiniband (IB) device name
-
-
-What:		/sys/class/infiniband_cm/abi_version
-Date:		Oct, 2005
-KernelVersion:	v2.6.14
-Contact:	linux-rdma@vger.kernel.org
-Description:
-		(RO) Value is incremented if any changes are made that break
-		userspace ABI compatibility of ucm devices.
-
-
 What:		/sys/class/infiniband_verbs/uverbsN/ibdev
 What:		/sys/class/infiniband_verbs/uverbsN/abi_version
 Date:		Sept, 2005
@@ -312,25 +295,6 @@ Description:
 				(MT23108 compat mode), MT25208 or MT25204
 
 		board_id:	(RO) Manufacturing board ID
-
-
-sysfs interface for Chelsio T3 RDMA Driver (cxgb3)
---------------------------------------------------
-
-What:		/sys/class/infiniband/cxgb3_X/hw_rev
-What:		/sys/class/infiniband/cxgb3_X/hca_type
-What:		/sys/class/infiniband/cxgb3_X/board_id
-Date:		Feb, 2007
-KernelVersion:	v2.6.21
-Contact:	linux-rdma@vger.kernel.org
-Description:
-		hw_rev:		(RO) Hardware revision number
-
-		hca_type:	(RO) HCA type. Here it is a driver short name.
-				It should normally match the name in its bus
-				driver structure (e.g.  pci_driver::name).
-
-		board_id:	(RO) Manufacturing board id
 
 
 sysfs interface for Mellanox ConnectX HCA IB driver (mlx4)
@@ -421,23 +385,6 @@ Description:
 
 		The requested enablement will occur at the next reset of the VF
 		(e.g. driver restart on the VM which owns the VF).
-
-
-sysfs interface for NetEffect RNIC Low-Level iWARP driver (nes)
----------------------------------------------------------------
-
-What:		/sys/class/infiniband/nesX/hw_rev
-What:		/sys/class/infiniband/nesX/hca_type
-What:		/sys/class/infiniband/nesX/board_id
-Date:		Feb, 2008
-KernelVersion:	v2.6.25
-Contact:	linux-rdma@vger.kernel.org
-Description:
-		hw_rev:		(RO) Hardware revision number
-
-		hca_type:	(RO) Host Channel Adapter type (NEX020)
-
-		board_id:	(RO) Manufacturing board id
 
 
 sysfs interface for Chelsio T4/T5 RDMA driver (cxgb4)

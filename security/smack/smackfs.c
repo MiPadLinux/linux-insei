@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2007 Casey Schaufler <casey@schaufler-ca.com>
- *
- *	This program is free software; you can redistribute it and/or modify
- *  	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation, version 2.
  *
  * Authors:
  * 	Casey Schaufler <casey@schaufler-ca.com>
@@ -13,7 +10,6 @@
  *
  *	Karl MacMillan <kmacmillan@tresys.com>
  *	James Morris <jmorris@redhat.com>
- *
  */
 
 #include <linux/kernel.h>
@@ -27,6 +23,7 @@
 #include <linux/ctype.h>
 #include <linux/audit.h>
 #include <linux/magic.h>
+#include <linux/fs_context.h>
 #include "smack.h"
 
 #define BEBITS	(sizeof(__be32) * 8)
@@ -881,11 +878,21 @@ static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
 	else
 		rule += strlen(skp->smk_known) + 1;
 
+	if (rule > data + count) {
+		rc = -EOVERFLOW;
+		goto out;
+	}
+
 	ret = sscanf(rule, "%d", &maplevel);
-	if (ret != 1 || maplevel > SMACK_CIPSO_MAXLEVEL)
+	if (ret != 1 || maplevel < 0 || maplevel > SMACK_CIPSO_MAXLEVEL)
 		goto out;
 
 	rule += SMK_DIGITLEN;
+	if (rule > data + count) {
+		rc = -EOVERFLOW;
+		goto out;
+	}
+
 	ret = sscanf(rule, "%d", &catlen);
 	if (ret != 1 || catlen > SMACK_CIPSO_MAXCATNUM)
 		goto out;
@@ -898,6 +905,10 @@ static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
 
 	for (i = 0; i < catlen; i++) {
 		rule += SMK_DIGITLEN;
+		if (rule > data + count) {
+			rc = -EOVERFLOW;
+			goto out;
+		}
 		ret = sscanf(rule, "%u", &cat);
 		if (ret != 1 || cat > SMACK_CIPSO_MAXCATNUM)
 			goto out;
@@ -911,6 +922,10 @@ static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
 		skp->smk_netlabel.attr.mls.cat = ncats.attr.mls.cat;
 		skp->smk_netlabel.attr.mls.lvl = ncats.attr.mls.lvl;
 		rc = count;
+		/*
+		 * This mapping may have been cached, so clear the cache.
+		 */
+		netlbl_cache_invalidate();
 	}
 
 out:
@@ -2713,7 +2728,6 @@ static int smk_open_relabel_self(struct inode *inode, struct file *file)
 static ssize_t smk_write_relabel_self(struct file *file, const char __user *buf,
 				size_t count, loff_t *ppos)
 {
-	struct task_smack *tsp = smack_cred(current_cred());
 	char *data;
 	int rc;
 	LIST_HEAD(list_tmp);
@@ -2738,11 +2752,21 @@ static ssize_t smk_write_relabel_self(struct file *file, const char __user *buf,
 	kfree(data);
 
 	if (!rc || (rc == -EINVAL && list_empty(&list_tmp))) {
+		struct cred *new;
+		struct task_smack *tsp;
+
+		new = prepare_creds();
+		if (!new) {
+			rc = -ENOMEM;
+			goto out;
+		}
+		tsp = smack_cred(new);
 		smk_destroy_label_list(&tsp->smk_relabel);
 		list_splice(&list_tmp, &tsp->smk_relabel);
+		commit_creds(new);
 		return count;
 	}
-
+out:
 	smk_destroy_label_list(&list_tmp);
 	return rc;
 }
@@ -2820,14 +2844,13 @@ static const struct file_operations smk_ptrace_ops = {
 /**
  * smk_fill_super - fill the smackfs superblock
  * @sb: the empty superblock
- * @data: unused
- * @silent: unused
+ * @fc: unused
  *
  * Fill in the well known entries for the smack filesystem
  *
  * Returns 0 on success, an error code on failure
  */
-static int smk_fill_super(struct super_block *sb, void *data, int silent)
+static int smk_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	int rc;
 
@@ -2897,38 +2920,39 @@ static int smk_fill_super(struct super_block *sb, void *data, int silent)
 }
 
 /**
- * smk_mount - get the smackfs superblock
- * @fs_type: passed along without comment
- * @flags: passed along without comment
- * @dev_name: passed along without comment
- * @data: passed along without comment
+ * smk_get_tree - get the smackfs superblock
+ * @fc: The mount context, including any options
  *
  * Just passes everything along.
  *
  * Returns what the lower level code does.
  */
-static struct dentry *smk_mount(struct file_system_type *fs_type,
-		      int flags, const char *dev_name, void *data)
+static int smk_get_tree(struct fs_context *fc)
 {
-	return mount_single(fs_type, flags, data, smk_fill_super);
+	return get_tree_single(fc, smk_fill_super);
+}
+
+static const struct fs_context_operations smk_context_ops = {
+	.get_tree	= smk_get_tree,
+};
+
+/**
+ * smk_init_fs_context - Initialise a filesystem context for smackfs
+ * @fc: The blank mount context
+ */
+static int smk_init_fs_context(struct fs_context *fc)
+{
+	fc->ops = &smk_context_ops;
+	return 0;
 }
 
 static struct file_system_type smk_fs_type = {
 	.name		= "smackfs",
-	.mount		= smk_mount,
+	.init_fs_context = smk_init_fs_context,
 	.kill_sb	= kill_litter_super,
 };
 
 static struct vfsmount *smackfs_mount;
-
-static int __init smk_preset_netlabel(struct smack_known *skp)
-{
-	skp->smk_netlabel.domain = skp->smk_known;
-	skp->smk_netlabel.flags =
-		NETLBL_SECATTR_DOMAIN | NETLBL_SECATTR_MLS_LVL;
-	return smk_netlbl_mls(smack_cipso_direct, skp->smk_known,
-				&skp->smk_netlabel, strlen(skp->smk_known));
-}
 
 /**
  * init_smk_fs - get the smackfs superblock
@@ -2968,19 +2992,19 @@ static int __init init_smk_fs(void)
 	smk_cipso_doi();
 	smk_unlbl_ambient(NULL);
 
-	rc = smk_preset_netlabel(&smack_known_floor);
+	rc = smack_populate_secattr(&smack_known_floor);
 	if (err == 0 && rc < 0)
 		err = rc;
-	rc = smk_preset_netlabel(&smack_known_hat);
+	rc = smack_populate_secattr(&smack_known_hat);
 	if (err == 0 && rc < 0)
 		err = rc;
-	rc = smk_preset_netlabel(&smack_known_huh);
+	rc = smack_populate_secattr(&smack_known_huh);
 	if (err == 0 && rc < 0)
 		err = rc;
-	rc = smk_preset_netlabel(&smack_known_star);
+	rc = smack_populate_secattr(&smack_known_star);
 	if (err == 0 && rc < 0)
 		err = rc;
-	rc = smk_preset_netlabel(&smack_known_web);
+	rc = smack_populate_secattr(&smack_known_web);
 	if (err == 0 && rc < 0)
 		err = rc;
 

@@ -47,9 +47,9 @@ static struct pblk_global_caches pblk_caches = {
 
 struct bio_set pblk_bio_set;
 
-static blk_qc_t pblk_make_rq(struct request_queue *q, struct bio *bio)
+static blk_qc_t pblk_submit_bio(struct bio *bio)
 {
-	struct pblk *pblk = q->queuedata;
+	struct pblk *pblk = bio->bi_disk->queue->queuedata;
 
 	if (bio_op(bio) == REQ_OP_DISCARD) {
 		pblk_discard(pblk, bio);
@@ -63,7 +63,7 @@ static blk_qc_t pblk_make_rq(struct request_queue *q, struct bio *bio)
 	 * constraint. Writes can be of arbitrary size.
 	 */
 	if (bio_data_dir(bio) == READ) {
-		blk_queue_split(q, &bio);
+		blk_queue_split(&bio);
 		pblk_submit_read(pblk, bio);
 	} else {
 		/* Prevent deadlock in the case of a modest LUN configuration
@@ -71,13 +71,19 @@ static blk_qc_t pblk_make_rq(struct request_queue *q, struct bio *bio)
 		 * leaves at least 256KB available for user I/O.
 		 */
 		if (pblk_get_secs(bio) > pblk_rl_max_io(&pblk->rl))
-			blk_queue_split(q, &bio);
+			blk_queue_split(&bio);
 
 		pblk_write_to_cache(pblk, bio, PBLK_IOTYPE_USER);
 	}
 
 	return BLK_QC_T_NONE;
 }
+
+static const struct block_device_operations pblk_bops = {
+	.owner		= THIS_MODULE,
+	.submit_bio	= pblk_submit_bio,
+};
+
 
 static size_t pblk_trans_map_size(struct pblk *pblk)
 {
@@ -145,9 +151,8 @@ static int pblk_l2p_init(struct pblk *pblk, bool factory_init)
 	int ret = 0;
 
 	map_size = pblk_trans_map_size(pblk);
-	pblk->trans_map = __vmalloc(map_size, GFP_KERNEL | __GFP_NOWARN
-					| __GFP_RETRY_MAYFAIL | __GFP_HIGHMEM,
-					PAGE_KERNEL);
+	pblk->trans_map = __vmalloc(map_size, GFP_KERNEL | __GFP_NOWARN |
+				    __GFP_RETRY_MAYFAIL | __GFP_HIGHMEM);
 	if (!pblk->trans_map) {
 		pblk_err(pblk, "failed to allocate L2P (need %zu of memory)\n",
 				map_size);
@@ -543,7 +548,7 @@ static void pblk_line_mg_free(struct pblk *pblk)
 
 	for (i = 0; i < PBLK_DATA_LINES; i++) {
 		kfree(l_mg->sline_meta[i]);
-		pblk_mfree(l_mg->eline_meta[i]->buf, l_mg->emeta_alloc_type);
+		kvfree(l_mg->eline_meta[i]->buf);
 		kfree(l_mg->eline_meta[i]);
 	}
 
@@ -560,7 +565,7 @@ static void pblk_line_meta_free(struct pblk_line_mgmt *l_mg,
 	kfree(line->erase_bitmap);
 	kfree(line->chks);
 
-	pblk_mfree(w_err_gc->lba_list, l_mg->emeta_alloc_type);
+	kvfree(w_err_gc->lba_list);
 	kfree(w_err_gc);
 }
 
@@ -890,29 +895,14 @@ static int pblk_line_mg_init(struct pblk *pblk)
 		if (!emeta)
 			goto fail_free_emeta;
 
-		if (lm->emeta_len[0] > KMALLOC_MAX_CACHE_SIZE) {
-			l_mg->emeta_alloc_type = PBLK_VMALLOC_META;
-
-			emeta->buf = vmalloc(lm->emeta_len[0]);
-			if (!emeta->buf) {
-				kfree(emeta);
-				goto fail_free_emeta;
-			}
-
-			emeta->nr_entries = lm->emeta_sec[0];
-			l_mg->eline_meta[i] = emeta;
-		} else {
-			l_mg->emeta_alloc_type = PBLK_KMALLOC_META;
-
-			emeta->buf = kmalloc(lm->emeta_len[0], GFP_KERNEL);
-			if (!emeta->buf) {
-				kfree(emeta);
-				goto fail_free_emeta;
-			}
-
-			emeta->nr_entries = lm->emeta_sec[0];
-			l_mg->eline_meta[i] = emeta;
+		emeta->buf = kvmalloc(lm->emeta_len[0], GFP_KERNEL);
+		if (!emeta->buf) {
+			kfree(emeta);
+			goto fail_free_emeta;
 		}
+
+		emeta->nr_entries = lm->emeta_sec[0];
+		l_mg->eline_meta[i] = emeta;
 	}
 
 	for (i = 0; i < l_mg->nr_lines; i++)
@@ -926,10 +916,7 @@ static int pblk_line_mg_init(struct pblk *pblk)
 
 fail_free_emeta:
 	while (--i >= 0) {
-		if (l_mg->emeta_alloc_type == PBLK_VMALLOC_META)
-			vfree(l_mg->eline_meta[i]->buf);
-		else
-			kfree(l_mg->eline_meta[i]->buf);
+		kvfree(l_mg->eline_meta[i]->buf);
 		kfree(l_mg->eline_meta[i]);
 	}
 
@@ -1299,7 +1286,7 @@ static struct nvm_tgt_type tt_pblk = {
 	.name		= "pblk",
 	.version	= {1, 0, 0},
 
-	.make_rq	= pblk_make_rq,
+	.bops		= &pblk_bops,
 	.capacity	= pblk_capacity,
 
 	.init		= pblk_init,

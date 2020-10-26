@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) 2014 Redpine Signals Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -230,19 +230,16 @@ static void rsi_reset_card(struct sdio_func *pfunction)
 		rsi_dbg(ERR_ZONE, "%s: CMD0 failed : %d\n", __func__, err);
 
 	/* Issue CMD5, arg = 0 */
-	if (!host->ocr_avail) {
-		err = rsi_issue_sdiocommand(pfunction,	SD_IO_SEND_OP_COND, 0,
-					    (MMC_RSP_R4 | MMC_CMD_BCR), &resp);
-		if (err)
-			rsi_dbg(ERR_ZONE, "%s: CMD5 failed : %d\n",
-				__func__, err);
-
-		host->ocr_avail = resp;
-	}
+	err = rsi_issue_sdiocommand(pfunction,	SD_IO_SEND_OP_COND, 0,
+				    (MMC_RSP_R4 | MMC_CMD_BCR), &resp);
+	if (err)
+		rsi_dbg(ERR_ZONE, "%s: CMD5 failed : %d\n",
+			__func__, err);
+	card->ocr = resp;
 	/* Issue CMD5, arg = ocr. Wait till card is ready  */
 	for (i = 0; i < 100; i++) {
 		err = rsi_issue_sdiocommand(pfunction, SD_IO_SEND_OP_COND,
-					    host->ocr_avail,
+					    card->ocr,
 					    (MMC_RSP_R4 | MMC_CMD_BCR), &resp);
 		if (err) {
 			rsi_dbg(ERR_ZONE, "%s: CMD5 failed : %d\n",
@@ -802,7 +799,7 @@ static int rsi_sdio_host_intf_write_pkt(struct rsi_hw *adapter,
 
 /**
  * rsi_sdio_host_intf_read_pkt() - This function reads the packet
-				   from the device.
+ *				   from the device.
  * @adapter: Pointer to the adapter data structure.
  * @pkt: Pointer to the packet data to be read from the the device.
  * @length: Length of the data to be read from the device.
@@ -835,20 +832,19 @@ int rsi_sdio_host_intf_read_pkt(struct rsi_hw *adapter,
  * rsi_init_sdio_interface() - This function does init specific to SDIO.
  *
  * @adapter: Pointer to the adapter data structure.
- * @pkt: Pointer to the packet data to be read from the the device.
+ * @pfunction: Pointer to the sdio_func structure.
  *
  * Return: 0 on success, -1 on failure.
  */
-
 static int rsi_init_sdio_interface(struct rsi_hw *adapter,
 				   struct sdio_func *pfunction)
 {
 	struct rsi_91x_sdiodev *rsi_91x_dev;
-	int status = -ENOMEM;
+	int status;
 
 	rsi_91x_dev = kzalloc(sizeof(*rsi_91x_dev), GFP_KERNEL);
 	if (!rsi_91x_dev)
-		return status;
+		return -ENOMEM;
 
 	adapter->rsi_dev = rsi_91x_dev;
 
@@ -890,7 +886,7 @@ static int rsi_init_sdio_interface(struct rsi_hw *adapter,
 #ifdef CONFIG_RSI_DEBUGFS
 	adapter->num_debugfs_entries = MAX_DEBUGFS_ENTRIES;
 #endif
-	return status;
+	return 0;
 fail:
 	sdio_disable_func(pfunction);
 	sdio_release_host(pfunction);
@@ -929,62 +925,69 @@ static int rsi_sdio_ta_reset(struct rsi_hw *adapter)
 	u32 addr;
 	u8 *data;
 
+	data = kzalloc(RSI_9116_REG_SIZE, GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
 	status = rsi_sdio_master_access_msword(adapter, TA_BASE_ADDR);
 	if (status < 0) {
 		rsi_dbg(ERR_ZONE,
 			"Unable to set ms word to common reg\n");
-		return status;
+		goto err;
 	}
 
 	rsi_dbg(INIT_ZONE, "%s: Bring TA out of reset\n", __func__);
 	put_unaligned_le32(TA_HOLD_THREAD_VALUE, data);
 	addr = TA_HOLD_THREAD_REG | RSI_SD_REQUEST_MASTER;
 	status = rsi_sdio_write_register_multiple(adapter, addr,
-						  (u8 *)&data,
+						  (u8 *)data,
 						  RSI_9116_REG_SIZE);
 	if (status < 0) {
 		rsi_dbg(ERR_ZONE, "Unable to hold TA threads\n");
-		return status;
+		goto err;
 	}
 
 	put_unaligned_le32(TA_SOFT_RST_CLR, data);
 	addr = TA_SOFT_RESET_REG | RSI_SD_REQUEST_MASTER;
 	status = rsi_sdio_write_register_multiple(adapter, addr,
-						  (u8 *)&data,
+						  (u8 *)data,
 						  RSI_9116_REG_SIZE);
 	if (status < 0) {
 		rsi_dbg(ERR_ZONE, "Unable to get TA out of reset\n");
-		return status;
+		goto err;
 	}
 
 	put_unaligned_le32(TA_PC_ZERO, data);
 	addr = TA_TH0_PC_REG | RSI_SD_REQUEST_MASTER;
 	status = rsi_sdio_write_register_multiple(adapter, addr,
-						  (u8 *)&data,
+						  (u8 *)data,
 						  RSI_9116_REG_SIZE);
 	if (status < 0) {
 		rsi_dbg(ERR_ZONE, "Unable to Reset TA PC value\n");
-		return -EINVAL;
+		status = -EINVAL;
+		goto err;
 	}
 
 	put_unaligned_le32(TA_RELEASE_THREAD_VALUE, data);
 	addr = TA_RELEASE_THREAD_REG | RSI_SD_REQUEST_MASTER;
 	status = rsi_sdio_write_register_multiple(adapter, addr,
-						  (u8 *)&data,
+						  (u8 *)data,
 						  RSI_9116_REG_SIZE);
 	if (status < 0) {
 		rsi_dbg(ERR_ZONE, "Unable to release TA threads\n");
-		return status;
+		goto err;
 	}
 
 	status = rsi_sdio_master_access_msword(adapter, MISC_CFG_BASE_ADDR);
 	if (status < 0) {
 		rsi_dbg(ERR_ZONE, "Unable to set ms word to common reg\n");
-		return status;
+		goto err;
 	}
 	rsi_dbg(INIT_ZONE, "***** TA Reset done *****\n");
 
-	return 0;
+err:
+	kfree(data);
+	return status;
 }
 
 static struct rsi_host_intf_ops sdio_host_intf_ops = {
@@ -1034,10 +1037,10 @@ static int rsi_probe(struct sdio_func *pfunction,
 		goto fail_free_adapter;
 	}
 
-	if (pfunction->device == RSI_SDIO_PID_9113) {
+	if (pfunction->device == SDIO_DEVICE_ID_RSI_9113) {
 		rsi_dbg(ERR_ZONE, "%s: 9113 module detected\n", __func__);
 		adapter->device_model = RSI_DEV_9113;
-	} else  if (pfunction->device == RSI_SDIO_PID_9116) {
+	} else  if (pfunction->device == SDIO_DEVICE_ID_RSI_9116) {
 		rsi_dbg(ERR_ZONE, "%s: 9116 module detected\n", __func__);
 		adapter->device_model = RSI_DEV_9116;
 	} else {
@@ -1464,12 +1467,15 @@ static void rsi_shutdown(struct device *dev)
 	struct rsi_91x_sdiodev *sdev =
 		(struct rsi_91x_sdiodev *)adapter->rsi_dev;
 	struct ieee80211_hw *hw = adapter->hw;
-	struct cfg80211_wowlan *wowlan = hw->wiphy->wowlan_config;
 
 	rsi_dbg(ERR_ZONE, "SDIO Bus shutdown =====>\n");
 
-	if (rsi_config_wowlan(adapter, wowlan))
-		rsi_dbg(ERR_ZONE, "Failed to configure WoWLAN\n");
+	if (hw) {
+		struct cfg80211_wowlan *wowlan = hw->wiphy->wowlan_config;
+
+		if (rsi_config_wowlan(adapter, wowlan))
+			rsi_dbg(ERR_ZONE, "Failed to configure WoWLAN\n");
+	}
 
 	if (IS_ENABLED(CONFIG_RSI_COEX) && adapter->priv->coex_mode > 1 &&
 	    adapter->priv->bt_adapter) {
@@ -1519,8 +1525,8 @@ static const struct dev_pm_ops rsi_pm_ops = {
 #endif
 
 static const struct sdio_device_id rsi_dev_table[] =  {
-	{ SDIO_DEVICE(RSI_SDIO_VENDOR_ID, RSI_SDIO_PID_9113) },
-	{ SDIO_DEVICE(RSI_SDIO_VENDOR_ID, RSI_SDIO_PID_9116) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_RSI, SDIO_DEVICE_ID_RSI_9113) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_RSI, SDIO_DEVICE_ID_RSI_9116) },
 	{ /* Blank */},
 };
 

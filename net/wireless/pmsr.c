@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  */
 #ifndef __PMSR_H
 #define __PMSR_H
@@ -126,6 +126,38 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 			    "FTM: civic location request not supported");
 	}
 
+	out->ftm.trigger_based =
+		!!tb[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED];
+	if (out->ftm.trigger_based && !capa->ftm.trigger_based) {
+		NL_SET_ERR_MSG_ATTR(info->extack,
+				    tb[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED],
+				    "FTM: trigger based ranging is not supported");
+		return -EINVAL;
+	}
+
+	out->ftm.non_trigger_based =
+		!!tb[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED];
+	if (out->ftm.non_trigger_based && !capa->ftm.non_trigger_based) {
+		NL_SET_ERR_MSG_ATTR(info->extack,
+				    tb[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED],
+				    "FTM: trigger based ranging is not supported");
+		return -EINVAL;
+	}
+
+	if (out->ftm.trigger_based && out->ftm.non_trigger_based) {
+		NL_SET_ERR_MSG(info->extack,
+			       "FTM: can't set both trigger based and non trigger based");
+		return -EINVAL;
+	}
+
+	if ((out->ftm.trigger_based || out->ftm.non_trigger_based) &&
+	    out->ftm.preamble != NL80211_PREAMBLE_HE) {
+		NL_SET_ERR_MSG_ATTR(info->extack,
+				    tb[NL80211_PMSR_FTM_REQ_ATTR_PREAMBLE],
+				    "FTM: non EDCA based ranging must use HE preamble");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
@@ -155,10 +187,9 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 
 	/* reuse info->attrs */
 	memset(info->attrs, 0, sizeof(*info->attrs) * (NL80211_ATTR_MAX + 1));
-	/* need to validate here, we don't want to have validation recursion */
 	err = nla_parse_nested_deprecated(info->attrs, NL80211_ATTR_MAX,
 					  tb[NL80211_PMSR_PEER_ATTR_CHAN],
-					  nl80211_policy, info->extack);
+					  NULL, info->extack);
 	if (err)
 		return err;
 
@@ -448,7 +479,7 @@ static int nl80211_pmsr_send_result(struct sk_buff *msg,
 
 	if (res->ap_tsf_valid &&
 	    nla_put_u64_64bit(msg, NL80211_PMSR_RESP_ATTR_AP_TSF,
-			      res->host_time, NL80211_PMSR_RESP_ATTR_PAD))
+			      res->ap_tsf, NL80211_PMSR_RESP_ATTR_PAD))
 		goto error;
 
 	if (res->final && nla_put_flag(msg, NL80211_PMSR_RESP_ATTR_FINAL))

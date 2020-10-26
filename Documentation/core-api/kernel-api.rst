@@ -33,11 +33,17 @@ String Conversions
 .. kernel-doc:: lib/kstrtox.c
    :export:
 
+.. kernel-doc:: lib/string_helpers.c
+   :export:
+
 String Manipulation
 -------------------
 
 .. kernel-doc:: lib/string.c
    :export:
+
+.. kernel-doc:: include/linux/string.h
+   :internal:
 
 .. kernel-doc:: mm/util.c
    :functions: kstrdup kstrdup_const kstrndup kmemdup kmemdup_nul memdup_user
@@ -51,7 +57,13 @@ The Linux kernel provides more basic utility functions.
 Bit Operations
 --------------
 
-.. kernel-doc:: arch/x86/include/asm/bitops.h
+.. kernel-doc:: include/asm-generic/bitops/instrumented-atomic.h
+   :internal:
+
+.. kernel-doc:: include/asm-generic/bitops/instrumented-non-atomic.h
+   :internal:
+
+.. kernel-doc:: include/asm-generic/bitops/instrumented-lock.h
    :internal:
 
 Bitmap Operations
@@ -138,6 +150,15 @@ Base 2 log and power Functions
 .. kernel-doc:: include/linux/log2.h
    :internal:
 
+Integer power Functions
+-----------------------
+
+.. kernel-doc:: lib/math/int_pow.c
+   :export:
+
+.. kernel-doc:: lib/math/int_sqrt.c
+   :export:
+
 Division Functions
 ------------------
 
@@ -209,12 +230,6 @@ Refer to the file kernel/module.c for more information.
 
 Hardware Interfaces
 ===================
-
-Interrupt Handling
-------------------
-
-.. kernel-doc:: kernel/irq/manage.c
-   :export:
 
 DMA Channels
 ------------
@@ -357,8 +372,6 @@ Read-Copy Update (RCU)
 .. kernel-doc:: include/linux/rcupdate.h
 
 .. kernel-doc:: kernel/rcu/tree.c
-
-.. kernel-doc:: kernel/rcu/tree_plugin.h
 
 .. kernel-doc:: kernel/rcu/tree_exp.h
 

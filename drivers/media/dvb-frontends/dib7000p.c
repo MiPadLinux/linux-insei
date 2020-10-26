@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Linux-DVB Driver for DiBcom's second generation DiB7000P (PC).
  *
  * Copyright (C) 2005-7 DiBcom (http://www.dibcom.fr/)
- *
- * This program is free software; you can redistribute it and/or
- *	modify it under the terms of the GNU General Public License as
- *	published by the Free Software Foundation, version 2.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -279,7 +276,7 @@ static int dib7000p_set_power_mode(struct dib7000p_state *state, enum dib7000p_p
 		if (state->version != SOC7090)
 			reg_1280 &= ~((1 << 11));
 		reg_1280 &= ~(1 << 6);
-		/* fall-through */
+		fallthrough;
 	case DIB7000P_POWER_INTERFACE_ONLY:
 		/* just leave power on the control-interfaces: GPIO and (I2C or SDIO) */
 		/* TODO power up either SDIO or I2C */
@@ -918,7 +915,7 @@ static int dib7000p_agc_startup(struct dvb_frontend *demod)
 
 		dib7000p_restart_agc(state);
 
-		dprintk("SPLIT %p: %hd\n", demod, agc_split);
+		dprintk("SPLIT %p: %u\n", demod, agc_split);
 
 		(*agc_state)++;
 		ret = 5;
@@ -2039,7 +2036,8 @@ static int dib7000pc_detection(struct i2c_adapter *i2c_adap)
 	if (i2c_transfer(i2c_adap, msg, 2) == 2)
 		if (rx[0] == 0x01 && rx[1] == 0xb3) {
 			dprintk("-D-  DiB7000PC detected\n");
-			return 1;
+			ret = 1;
+			goto out;
 		}
 
 	msg[0].addr = msg[1].addr = 0x40;
@@ -2047,11 +2045,13 @@ static int dib7000pc_detection(struct i2c_adapter *i2c_adap)
 	if (i2c_transfer(i2c_adap, msg, 2) == 2)
 		if (rx[0] == 0x01 && rx[1] == 0xb3) {
 			dprintk("-D-  DiB7000PC detected\n");
-			return 1;
+			ret = 1;
+			goto out;
 		}
 
 	dprintk("-D-  DiB7000PC not detected\n");
 
+out:
 	kfree(rx);
 rx_memory_error:
 	kfree(tx);

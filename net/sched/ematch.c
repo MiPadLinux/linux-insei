@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * net/sched/ematch.c		Extended Match API
- *
- *		This program is free software; you can redistribute it and/or
- *		modify it under the terms of the GNU General Public License
- *		as published by the Free Software Foundation; either version
- *		2 of the License, or (at your option) any later version.
  *
  * Authors:	Thomas Graf <tgraf@suug.ch>
  *
@@ -242,6 +238,9 @@ static int tcf_em_validate(struct tcf_proto *tp,
 			goto errout;
 
 		if (em->ops->change) {
+			err = -EINVAL;
+			if (em_hdr->flags & TCF_EM_SIMPLE)
+				goto errout;
 			err = em->ops->change(net, data, data_len, em);
 			if (err < 0)
 				goto errout;
@@ -267,12 +266,12 @@ static int tcf_em_validate(struct tcf_proto *tp,
 				}
 				em->data = (unsigned long) v;
 			}
+			em->datalen = data_len;
 		}
 	}
 
 	em->matchid = em_hdr->matchid;
 	em->flags = em_hdr->flags;
-	em->datalen = data_len;
 	em->net = net;
 
 	err = 0;
@@ -390,7 +389,6 @@ EXPORT_SYMBOL(tcf_em_tree_validate);
 /**
  * tcf_em_tree_destroy - destroy an ematch tree
  *
- * @tp: classifier kind handle
  * @tree: ematch tree to be deleted
  *
  * This functions destroys an ematch tree previously created by
@@ -426,7 +424,7 @@ EXPORT_SYMBOL(tcf_em_tree_destroy);
  * tcf_em_tree_dump - dump ematch tree into a rtnl message
  *
  * @skb: skb holding the rtnl message
- * @t: ematch tree to be dumped
+ * @tree: ematch tree to be dumped
  * @tlv: TLV type to be used to encapsulate the tree
  *
  * This function dumps a ematch tree into a rtnl message. It is valid to

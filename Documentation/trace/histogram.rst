@@ -1010,7 +1010,7 @@ Extended error information
 
   For example, suppose we wanted to take a look at the relative
   weights in terms of skb length for each callpath that leads to a
-  netif_receieve_skb event when downloading a decent-sized file using
+  netif_receive_skb event when downloading a decent-sized file using
   wget.
 
   First we set up an initially paused stacktrace trigger on the
@@ -1495,7 +1495,7 @@ Extended error information
     #
 
     { stacktrace:
-             _do_fork+0x18e/0x330
+             kernel_clone+0x18e/0x330
              kernel_thread+0x29/0x30
              kthreadd+0x154/0x1b0
              ret_from_fork+0x3f/0x70
@@ -1588,7 +1588,7 @@ Extended error information
              SYSC_sendto+0xef/0x170
     } hitcount:         88
     { stacktrace:
-             _do_fork+0x18e/0x330
+             kernel_clone+0x18e/0x330
              SyS_clone+0x19/0x20
              entry_SYSCALL_64_fastpath+0x12/0x6a
     } hitcount:        244
@@ -1776,6 +1776,24 @@ consisting of the name of the new event along with one or more
 variables and their types, which can be any valid field type,
 separated by semicolons, to the tracing/synthetic_events file.
 
+See synth_field_size() for available types.
+
+If field_name contains [n], the field is considered to be a static array.
+
+If field_names contains[] (no subscript), the field is considered to
+be a dynamic array, which will only take as much space in the event as
+is required to hold the array.
+
+A string field can be specified using either the static notation:
+
+  char name[32];
+
+Or the dynamic:
+
+  char name[];
+
+The size limit for either is 256.
+
 For instance, the following creates a new event named 'wakeup_latency'
 with 3 fields: lat, pid, and prio.  Each of those fields is simply a
 variable reference to a variable on another event::
@@ -1843,7 +1861,7 @@ practice, not every handler.action combination is currently supported;
 if a given handler.action combination isn't supported, the hist
 trigger will fail with -EINVAL;
 
-The default 'handler.action' if none is explicity specified is as it
+The default 'handler.action' if none is explicitly specified is as it
 always has been, to simply update the set of values associated with an
 entry.  Some applications, however, may want to perform additional
 actions at that point, such as generate another event, or compare and
@@ -2088,7 +2106,7 @@ The following commonly-used handler.action pairs are available:
     and the saved values corresponding to the max are displayed
     following the rest of the fields.
 
-    If a snaphot was taken, there is also a message indicating that,
+    If a snapshot was taken, there is also a message indicating that,
     along with the value and event that triggered the global maximum:
 
     # cat /sys/kernel/debug/tracing/events/sched/sched_switch/hist
@@ -2176,7 +2194,7 @@ The following commonly-used handler.action pairs are available:
     hist trigger entry.
 
     Note that in this case the changed value is a global variable
-    associated withe current trace instance.  The key of the specific
+    associated with current trace instance.  The key of the specific
     trace event that caused the value to change and the global value
     itself are displayed, along with a message stating that a snapshot
     has been taken and where to find it.  The user can use the key
@@ -2203,7 +2221,7 @@ The following commonly-used handler.action pairs are available:
     and the saved values corresponding to that value are displayed
     following the rest of the fields.
 
-    If a snaphot was taken, there is also a message indicating that,
+    If a snapshot was taken, there is also a message indicating that,
     along with the value and event that triggered the snapshot::
 
       # cat /sys/kernel/debug/tracing/events/tcp/tcp_probe/hist

@@ -103,6 +103,8 @@
 #define FSCTL_SET_ZERO_ON_DEALLOC    0x00090194 /* BB add struct */
 #define FSCTL_SET_SHORT_NAME_BEHAVIOR 0x000901B4 /* BB add struct */
 #define FSCTL_GET_INTEGRITY_INFORMATION 0x0009027C
+#define FSCTL_GET_RETRIEVAL_POINTERS_AND_REFCOUNT 0x000903d3
+#define FSCTL_GET_RETRIEVAL_POINTER_COUNT 0x0009042b
 #define FSCTL_QUERY_ALLOCATED_RANGES 0x000940CF
 #define FSCTL_SET_DEFECT_MANAGEMENT  0x00098134 /* BB add struct */
 #define FSCTL_FILE_LEVEL_TRIM        0x00098208 /* BB add struct */
@@ -144,6 +146,17 @@
 #define IO_REPARSE_APPXSTREAM	     0xC0000014
 /* NFS symlinks, Win 8/SMB3 and later */
 #define IO_REPARSE_TAG_NFS           0x80000014
+/*
+ * AzureFileSync - see
+ * https://docs.microsoft.com/en-us/azure/storage/files/storage-sync-cloud-tiering
+ */
+#define IO_REPARSE_TAG_AZ_FILE_SYNC  0x8000001e
+/* WSL reparse tags */
+#define IO_REPARSE_TAG_LX_SYMLINK    0xA000001D
+#define IO_REPARSE_TAG_AF_UNIX	     0x80000023
+#define IO_REPARSE_TAG_LX_FIFO	     0x80000024
+#define IO_REPARSE_TAG_LX_CHR	     0x80000025
+#define IO_REPARSE_TAG_LX_BLK	     0x80000026
 
 /* fsctl flags */
 /* If Flags is set to this value, the request is an FSCTL not ioctl request */

@@ -215,7 +215,7 @@ static void aspeed_gfx_disable_vblank(struct drm_simple_display_pipe *pipe)
 	writel(reg | CRT_CTRL_VERTICAL_INTR_STS, priv->base + CRT_CTRL1);
 }
 
-static struct drm_simple_display_pipe_funcs aspeed_gfx_funcs = {
+static const struct drm_simple_display_pipe_funcs aspeed_gfx_funcs = {
 	.enable		= aspeed_gfx_pipe_enable,
 	.disable	= aspeed_gfx_pipe_disable,
 	.update		= aspeed_gfx_pipe_update,
@@ -231,7 +231,7 @@ static const uint32_t aspeed_gfx_formats[] = {
 
 int aspeed_gfx_create_pipe(struct drm_device *drm)
 {
-	struct aspeed_gfx *priv = drm->dev_private;
+	struct aspeed_gfx *priv = to_aspeed_gfx(drm);
 
 	return drm_simple_display_pipe_init(drm, &priv->pipe, &aspeed_gfx_funcs,
 					    aspeed_gfx_formats,

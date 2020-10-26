@@ -1,10 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) Sistina Software, Inc.  1997-2003 All rights reserved.
  * Copyright (C) 2004-2008 Red Hat, Inc.  All rights reserved.
- *
- * This copyrighted material is made available to anyone wishing to use,
- * modify, copy, or redistribute it subject to the terms and conditions
- * of the GNU General Public License version 2.
  */
 
 #ifndef __LOPS_DOT_H__
@@ -21,7 +18,8 @@
 	 ~(2 * sizeof(__be64) - 1))
 
 extern const struct gfs2_log_operations *gfs2_log_ops[];
-extern u64 gfs2_log_bmap(struct gfs2_sbd *sdp);
+extern void gfs2_log_incr_head(struct gfs2_sbd *sdp);
+extern u64 gfs2_log_bmap(struct gfs2_jdesc *jd, unsigned int lbn);
 extern void gfs2_log_write(struct gfs2_sbd *sdp, struct page *page,
 			   unsigned size, unsigned offset, u64 blkno);
 extern void gfs2_log_write_page(struct gfs2_sbd *sdp, struct page *page);
@@ -29,6 +27,7 @@ extern void gfs2_log_submit_bio(struct bio **biop, int opf);
 extern void gfs2_pin(struct gfs2_sbd *sdp, struct buffer_head *bh);
 extern int gfs2_find_jhead(struct gfs2_jdesc *jd,
 			   struct gfs2_log_header_host *head, bool keep_cache);
+extern void gfs2_meta_sync(struct gfs2_glock *gl);
 
 static inline unsigned int buf_limit(struct gfs2_sbd *sdp)
 {

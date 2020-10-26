@@ -1,20 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * drxd_hard.c: DVB-T Demodulator Micronas DRX3975D-A2,DRX397xD-B1
  *
  * Copyright (C) 2003-2007 Micronas
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 only, as published by the Free Software Foundation.
- *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * To obtain the license, point your browser to
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/kernel.h>
@@ -1524,14 +1512,14 @@ static int SetDeviceTypeId(struct drxd_state *state)
 			switch (deviceId) {
 			case 4:
 				state->diversity = 1;
-				/* fall through */
+				fallthrough;
 			case 3:
 			case 7:
 				state->PGA = 1;
 				break;
 			case 6:
 				state->diversity = 1;
-				/* fall through */
+				fallthrough;
 			case 5:
 			case 8:
 				break;
@@ -1978,7 +1966,7 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 		switch (p->transmission_mode) {
 		default:	/* Not set, detect it automatically */
 			operationMode |= SC_RA_RAM_OP_AUTO_MODE__M;
-			/* fall through - try first guess DRX_FFTMODE_8K */
+			fallthrough;	/* try first guess DRX_FFTMODE_8K */
 		case TRANSMISSION_MODE_8K:
 			transmissionParams |= SC_RA_RAM_OP_PARAM_MODE_8K;
 			if (state->type_A) {
@@ -2151,7 +2139,7 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 		switch (p->modulation) {
 		default:
 			operationMode |= SC_RA_RAM_OP_AUTO_CONST__M;
-			/* fall through - try first guess DRX_CONSTELLATION_QAM64 */
+			fallthrough;	/* try first guess DRX_CONSTELLATION_QAM64 */
 		case QAM_64:
 			transmissionParams |= SC_RA_RAM_OP_PARAM_CONST_QAM64;
 			if (state->type_A) {
@@ -2278,7 +2266,7 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 			break;
 		default:
 			operationMode |= SC_RA_RAM_OP_AUTO_RATE__M;
-			/* fall through */
+			fallthrough;
 		case FEC_2_3:
 			transmissionParams |= SC_RA_RAM_OP_PARAM_RATE_2_3;
 			if (state->type_A)
@@ -2313,7 +2301,7 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 		switch (p->bandwidth_hz) {
 		case 0:
 			p->bandwidth_hz = 8000000;
-			/* fall through */
+			fallthrough;
 		case 8000000:
 			/* (64/7)*(8/8)*1000000 */
 			bandwidth = DRXD_BANDWIDTH_8MHZ_IN_HZ;

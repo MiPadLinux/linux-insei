@@ -160,6 +160,7 @@ struct intel_vgpu_mm {
 
 			struct list_head list;
 			struct list_head lru_list;
+			struct list_head link; /* possible LRI shadow mm list */
 		} ppgtt_mm;
 		struct {
 			void *virtual_ggtt;
@@ -205,17 +206,18 @@ struct intel_vgpu_gtt {
 	struct intel_vgpu_scratch_pt scratch_pt[GTT_TYPE_MAX];
 };
 
-extern int intel_vgpu_init_gtt(struct intel_vgpu *vgpu);
-extern void intel_vgpu_clean_gtt(struct intel_vgpu *vgpu);
+int intel_vgpu_init_gtt(struct intel_vgpu *vgpu);
+void intel_vgpu_clean_gtt(struct intel_vgpu *vgpu);
 void intel_vgpu_reset_ggtt(struct intel_vgpu *vgpu, bool invalidate_old);
 void intel_vgpu_invalidate_ppgtt(struct intel_vgpu *vgpu);
 
-extern int intel_gvt_init_gtt(struct intel_gvt *gvt);
+int intel_gvt_init_gtt(struct intel_gvt *gvt);
 void intel_vgpu_reset_gtt(struct intel_vgpu *vgpu);
-extern void intel_gvt_clean_gtt(struct intel_gvt *gvt);
+void intel_gvt_clean_gtt(struct intel_gvt *gvt);
 
-extern struct intel_vgpu_mm *intel_gvt_find_ppgtt_mm(struct intel_vgpu *vgpu,
-		int page_table_level, void *root_entry);
+struct intel_vgpu_mm *intel_gvt_find_ppgtt_mm(struct intel_vgpu *vgpu,
+					      int page_table_level,
+					      void *root_entry);
 
 struct intel_vgpu_oos_page {
 	struct intel_vgpu_ppgtt_spt *spt;
@@ -276,5 +278,7 @@ int intel_vgpu_emulate_ggtt_mmio_read(struct intel_vgpu *vgpu,
 
 int intel_vgpu_emulate_ggtt_mmio_write(struct intel_vgpu *vgpu,
 	unsigned int off, void *p_data, unsigned int bytes);
+
+void intel_vgpu_destroy_all_ppgtt_mm(struct intel_vgpu *vgpu);
 
 #endif /* _GVT_GTT_H_ */

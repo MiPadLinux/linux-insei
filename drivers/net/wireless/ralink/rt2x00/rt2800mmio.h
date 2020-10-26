@@ -114,6 +114,8 @@
 #define RXD_W3_PLCP_SIGNAL		FIELD32(0x00020000)
 #define RXD_W3_PLCP_RSSI		FIELD32(0x00040000)
 
+unsigned int rt2800mmio_get_dma_done(struct data_queue *queue);
+
 /* TX descriptor initialization */
 __le32 *rt2800mmio_get_txwi(struct queue_entry *entry);
 void rt2800mmio_write_tx_desc(struct queue_entry *entry,
@@ -124,11 +126,11 @@ void rt2800mmio_fill_rxdone(struct queue_entry *entry,
 			    struct rxdone_entry_desc *rxdesc);
 
 /* Interrupt functions */
-void rt2800mmio_txstatus_tasklet(unsigned long data);
-void rt2800mmio_pretbtt_tasklet(unsigned long data);
-void rt2800mmio_tbtt_tasklet(unsigned long data);
-void rt2800mmio_rxdone_tasklet(unsigned long data);
-void rt2800mmio_autowake_tasklet(unsigned long data);
+void rt2800mmio_txstatus_tasklet(struct tasklet_struct *t);
+void rt2800mmio_pretbtt_tasklet(struct tasklet_struct *t);
+void rt2800mmio_tbtt_tasklet(struct tasklet_struct *t);
+void rt2800mmio_rxdone_tasklet(struct tasklet_struct *t);
+void rt2800mmio_autowake_tasklet(struct tasklet_struct *t);
 irqreturn_t rt2800mmio_interrupt(int irq, void *dev_instance);
 void rt2800mmio_toggle_irq(struct rt2x00_dev *rt2x00dev,
 			   enum dev_state state);

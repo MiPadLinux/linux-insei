@@ -1,12 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * Copyright (C) 2014 ARM Limited
  */
@@ -335,15 +328,15 @@ static ssize_t arm_ccn_pmu_event_show(struct device *dev,
 			struct arm_ccn_pmu_event, attr);
 	ssize_t res;
 
-	res = snprintf(buf, PAGE_SIZE, "type=0x%x", event->type);
+	res = scnprintf(buf, PAGE_SIZE, "type=0x%x", event->type);
 	if (event->event)
-		res += snprintf(buf + res, PAGE_SIZE - res, ",event=0x%x",
+		res += scnprintf(buf + res, PAGE_SIZE - res, ",event=0x%x",
 				event->event);
 	if (event->def)
-		res += snprintf(buf + res, PAGE_SIZE - res, ",%s",
+		res += scnprintf(buf + res, PAGE_SIZE - res, ",%s",
 				event->def);
 	if (event->mask)
-		res += snprintf(buf + res, PAGE_SIZE - res, ",mask=0x%x",
+		res += scnprintf(buf + res, PAGE_SIZE - res, ",mask=0x%x",
 				event->mask);
 
 	/* Arguments required by an event */
@@ -351,25 +344,25 @@ static ssize_t arm_ccn_pmu_event_show(struct device *dev,
 	case CCN_TYPE_CYCLES:
 		break;
 	case CCN_TYPE_XP:
-		res += snprintf(buf + res, PAGE_SIZE - res,
+		res += scnprintf(buf + res, PAGE_SIZE - res,
 				",xp=?,vc=?");
 		if (event->event == CCN_EVENT_WATCHPOINT)
-			res += snprintf(buf + res, PAGE_SIZE - res,
+			res += scnprintf(buf + res, PAGE_SIZE - res,
 					",port=?,dir=?,cmp_l=?,cmp_h=?,mask=?");
 		else
-			res += snprintf(buf + res, PAGE_SIZE - res,
+			res += scnprintf(buf + res, PAGE_SIZE - res,
 					",bus=?");
 
 		break;
 	case CCN_TYPE_MN:
-		res += snprintf(buf + res, PAGE_SIZE - res, ",node=%d", ccn->mn_id);
+		res += scnprintf(buf + res, PAGE_SIZE - res, ",node=%d", ccn->mn_id);
 		break;
 	default:
-		res += snprintf(buf + res, PAGE_SIZE - res, ",node=?");
+		res += scnprintf(buf + res, PAGE_SIZE - res, ",node=?");
 		break;
 	}
 
-	res += snprintf(buf + res, PAGE_SIZE - res, "\n");
+	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
 
 	return res;
 }
@@ -1411,7 +1404,7 @@ static int arm_ccn_init_nodes(struct arm_ccn *ccn, int region,
 		break;
 	case CCN_TYPE_SBAS:
 		ccn->sbas_present = 1;
-		/* Fall-through */
+		fallthrough;
 	default:
 		component = &ccn->node[id];
 		break;
@@ -1484,8 +1477,7 @@ static int arm_ccn_probe(struct platform_device *pdev)
 	ccn->dev = &pdev->dev;
 	platform_set_drvdata(pdev, ccn);
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	ccn->base = devm_ioremap_resource(ccn->dev, res);
+	ccn->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(ccn->base))
 		return PTR_ERR(ccn->base);
 
@@ -1544,6 +1536,7 @@ static int arm_ccn_remove(struct platform_device *pdev)
 static const struct of_device_id arm_ccn_match[] = {
 	{ .compatible = "arm,ccn-502", },
 	{ .compatible = "arm,ccn-504", },
+	{ .compatible = "arm,ccn-512", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, arm_ccn_match);
@@ -1552,6 +1545,7 @@ static struct platform_driver arm_ccn_driver = {
 	.driver = {
 		.name = "arm-ccn",
 		.of_match_table = arm_ccn_match,
+		.suppress_bind_attrs = true,
 	},
 	.probe = arm_ccn_probe,
 	.remove = arm_ccn_remove,

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause) */
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause) */
 /*
  * This file is provided under a dual BSD/GPLv2 license.  When using or
  * redistributing this file, you may do so under either license.
@@ -18,10 +18,21 @@
 
 #define SOF_IPC_MAX_ELEMS	16
 
+/*
+ * Firmware boot info flag bits (64-bit)
+ */
+#define SOF_IPC_INFO_BUILD		BIT(0)
+#define SOF_IPC_INFO_LOCKS		BIT(1)
+#define SOF_IPC_INFO_LOCKSV		BIT(2)
+#define SOF_IPC_INFO_GDB		BIT(3)
+
 /* extended data types that can be appended onto end of sof_ipc_fw_ready */
 enum sof_ipc_ext_data {
-	SOF_IPC_EXT_DMA_BUFFER = 0,
-	SOF_IPC_EXT_WINDOW,
+	SOF_IPC_EXT_UNUSED		= 0,
+	SOF_IPC_EXT_WINDOW		= 1,
+	SOF_IPC_EXT_CC_INFO		= 2,
+	SOF_IPC_EXT_PROBE_INFO		= 3,
+	SOF_IPC_EXT_USER_ABI_INFO	= 4,
 };
 
 /* FW version - SOF_IPC_GLB_VERSION */
@@ -35,9 +46,11 @@ struct sof_ipc_fw_version {
 	uint8_t time[10];
 	uint8_t tag[6];
 	uint32_t abi_version;
+	/* used to check FW and ldc file compatibility, reproducible value */
+	uint32_t src_hash;
 
 	/* reserved for future use */
-	uint32_t reserved[4];
+	uint32_t reserved[3];
 } __packed;
 
 /* FW ready Message - sent by firmware when boot has completed */
@@ -49,16 +62,8 @@ struct sof_ipc_fw_ready {
 	uint32_t hostbox_size;
 	struct sof_ipc_fw_version version;
 
-	/* Miscellaneous debug flags showing build/debug features enabled */
-	union {
-		uint64_t reserved;
-		struct {
-			uint64_t build:1;
-			uint64_t locks:1;
-			uint64_t locks_verbose:1;
-			uint64_t gdb:1;
-		} bits;
-	} debug;
+	/* Miscellaneous flags */
+	uint64_t flags;
 
 	/* reserved for future use */
 	uint32_t reserved[4];
@@ -82,22 +87,6 @@ struct sof_ipc_ext_data_hdr {
 	uint32_t type;		/**< SOF_IPC_EXT_ */
 } __packed;
 
-struct sof_ipc_dma_buffer_elem {
-	struct sof_ipc_hdr hdr;
-	uint32_t type;		/**< SOF_IPC_REGION_ */
-	uint32_t id;		/**< platform specific - used to map to host memory */
-	struct sof_ipc_host_buffer buffer;
-} __packed;
-
-/* extended data DMA buffers for IPC, trace and debug */
-struct sof_ipc_dma_buffer_data {
-	struct sof_ipc_ext_data_hdr ext_hdr;
-	uint32_t num_buffers;
-
-	/* host files in buffer[n].buffer */
-	struct sof_ipc_dma_buffer_elem buffer[];
-}  __packed;
-
 struct sof_ipc_window_elem {
 	struct sof_ipc_hdr hdr;
 	uint32_t type;		/**< SOF_IPC_REGION_ */
@@ -112,7 +101,39 @@ struct sof_ipc_window_elem {
 struct sof_ipc_window {
 	struct sof_ipc_ext_data_hdr ext_hdr;
 	uint32_t num_windows;
-	struct sof_ipc_window_elem window[];
+	struct sof_ipc_window_elem window[SOF_IPC_MAX_ELEMS];
+}  __packed;
+
+struct sof_ipc_cc_version {
+	struct sof_ipc_ext_data_hdr ext_hdr;
+	uint32_t major;
+	uint32_t minor;
+	uint32_t micro;
+
+	/* reserved for future use */
+	uint32_t reserved[4];
+
+	uint8_t name[16]; /* null terminated compiler name */
+	uint8_t optim[4]; /* null terminated compiler -O flag value */
+	uint8_t desc[32]; /* null terminated compiler description */
+} __packed;
+
+/* extended data: Probe setup */
+struct sof_ipc_probe_support {
+	struct sof_ipc_ext_data_hdr ext_hdr;
+
+	uint32_t probe_points_max;
+	uint32_t injection_dmas_max;
+
+	/* reserved for future use */
+	uint32_t reserved[2];
+} __packed;
+
+/* extended data: user abi version(s) */
+struct sof_ipc_user_abi_version {
+	struct sof_ipc_ext_data_hdr ext_hdr;
+
+	uint32_t abi_dbg_version;
 }  __packed;
 
 #endif

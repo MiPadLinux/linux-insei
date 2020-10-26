@@ -1,16 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * ISHTP bus driver
  *
  * Copyright (c) 2012-2016, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
  */
 
 #include <linux/module.h>
@@ -479,7 +471,6 @@ static struct ishtp_cl_device *ishtp_bus_add_device(struct ishtp_device *dev,
 	}
 
 	ishtp_device_ready = true;
-	dev_set_drvdata(&device->dev, device);
 
 	return device;
 }
@@ -511,8 +502,6 @@ static void ishtp_bus_remove_device(struct ishtp_cl_device *device)
 int ishtp_cl_driver_register(struct ishtp_cl_driver *driver,
 			     struct module *owner)
 {
-	int err;
-
 	if (!ishtp_device_ready)
 		return -ENODEV;
 
@@ -520,11 +509,7 @@ int ishtp_cl_driver_register(struct ishtp_cl_driver *driver,
 	driver->driver.owner = owner;
 	driver->driver.bus = &ishtp_cl_bus_type;
 
-	err = driver_register(&driver->driver);
-	if (err)
-		return err;
-
-	return 0;
+	return driver_register(&driver->driver);
 }
 EXPORT_SYMBOL(ishtp_cl_driver_register);
 
@@ -646,6 +631,20 @@ void *ishtp_get_drvdata(struct ishtp_cl_device *cl_device)
 	return cl_device->driver_data;
 }
 EXPORT_SYMBOL(ishtp_get_drvdata);
+
+/**
+ * ishtp_dev_to_cl_device() - get ishtp_cl_device instance from device instance
+ * @device: device instance
+ *
+ * Get ish_cl_device instance which embeds device instance in it.
+ *
+ * Return: pointer to ishtp_cl_device instance
+ */
+struct ishtp_cl_device *ishtp_dev_to_cl_device(struct device *device)
+{
+	return to_ishtp_cl_device(device);
+}
+EXPORT_SYMBOL(ishtp_dev_to_cl_device);
 
 /**
  * ishtp_bus_new_client() - Create a new client

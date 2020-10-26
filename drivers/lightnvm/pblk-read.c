@@ -187,12 +187,11 @@ static void pblk_end_user_read(struct bio *bio, int error)
 static void __pblk_end_io_read(struct pblk *pblk, struct nvm_rq *rqd,
 			       bool put_line)
 {
-	struct nvm_tgt_dev *dev = pblk->dev;
 	struct pblk_g_ctx *r_ctx = nvm_rq_to_pdu(rqd);
 	struct bio *int_bio = rqd->bio;
 	unsigned long start_time = r_ctx->start_time;
 
-	generic_end_io_acct(dev->q, REQ_OP_READ, &pblk->disk->part0, start_time);
+	bio_end_io_acct(int_bio, start_time);
 
 	if (rqd->error)
 		pblk_log_read_err(pblk, rqd);
@@ -263,17 +262,15 @@ retry:
 
 void pblk_submit_read(struct pblk *pblk, struct bio *bio)
 {
-	struct nvm_tgt_dev *dev = pblk->dev;
-	struct request_queue *q = dev->q;
 	sector_t blba = pblk_get_lba(bio);
 	unsigned int nr_secs = pblk_get_secs(bio);
 	bool from_cache;
 	struct pblk_g_ctx *r_ctx;
 	struct nvm_rq *rqd;
 	struct bio *int_bio, *split_bio;
+	unsigned long start_time;
 
-	generic_start_io_acct(q, REQ_OP_READ, bio_sectors(bio),
-			      &pblk->disk->part0);
+	start_time = bio_start_io_acct(bio);
 
 	rqd = pblk_alloc_rqd(pblk, PBLK_READ);
 
@@ -283,7 +280,7 @@ void pblk_submit_read(struct pblk *pblk, struct bio *bio)
 	rqd->end_io = pblk_end_io_read;
 
 	r_ctx = nvm_rq_to_pdu(rqd);
-	r_ctx->start_time = jiffies;
+	r_ctx->start_time = start_time;
 	r_ctx->lba = blba;
 
 	if (pblk_alloc_rqd_meta(pblk, rqd)) {
@@ -323,7 +320,7 @@ split_retry:
 		split_bio = bio_split(bio, nr_secs * NR_PHY_IN_LOG, GFP_KERNEL,
 					&pblk_bio_set);
 		bio_chain(split_bio, bio);
-		generic_make_request(bio);
+		submit_bio_noacct(bio);
 
 		/* New bio contains first N sectors of the previous one, so
 		 * we can continue to use existing rqd, but we need to shrink
@@ -342,7 +339,7 @@ split_retry:
 		bio_put(int_bio);
 		int_bio = bio_clone_fast(bio, GFP_KERNEL, &pblk_bio_set);
 		goto split_retry;
-	} else if (pblk_submit_io(pblk, rqd)) {
+	} else if (pblk_submit_io(pblk, rqd, NULL)) {
 		/* Submitting IO to drive failed, let's report an error */
 		rqd->error = -ENODEV;
 		pblk_end_io_read(rqd);
@@ -417,11 +414,7 @@ out:
 
 int pblk_submit_read_gc(struct pblk *pblk, struct pblk_gc_rq *gc_rq)
 {
-	struct nvm_tgt_dev *dev = pblk->dev;
-	struct nvm_geo *geo = &dev->geo;
-	struct bio *bio;
 	struct nvm_rq rqd;
-	int data_len;
 	int ret = NVM_IO_OK;
 
 	memset(&rqd, 0, sizeof(struct nvm_rq));
@@ -446,26 +439,12 @@ int pblk_submit_read_gc(struct pblk *pblk, struct pblk_gc_rq *gc_rq)
 	if (!(gc_rq->secs_to_gc))
 		goto out;
 
-	data_len = (gc_rq->secs_to_gc) * geo->csecs;
-	bio = pblk_bio_map_addr(pblk, gc_rq->data, gc_rq->secs_to_gc, data_len,
-						PBLK_VMALLOC_META, GFP_KERNEL);
-	if (IS_ERR(bio)) {
-		pblk_err(pblk, "could not allocate GC bio (%lu)\n",
-								PTR_ERR(bio));
-		ret = PTR_ERR(bio);
-		goto err_free_dma;
-	}
-
-	bio->bi_iter.bi_sector = 0; /* internal bio */
-	bio_set_op_attrs(bio, REQ_OP_READ, 0);
-
 	rqd.opcode = NVM_OP_PREAD;
 	rqd.nr_ppas = gc_rq->secs_to_gc;
-	rqd.bio = bio;
 
-	if (pblk_submit_io_sync(pblk, &rqd)) {
+	if (pblk_submit_io_sync(pblk, &rqd, gc_rq->data)) {
 		ret = -EIO;
-		goto err_free_bio;
+		goto err_free_dma;
 	}
 
 	pblk_read_check_rand(pblk, &rqd, gc_rq->lba_list, gc_rq->nr_secs);
@@ -489,8 +468,6 @@ out:
 	pblk_free_rqd_meta(pblk, &rqd);
 	return ret;
 
-err_free_bio:
-	bio_put(bio);
 err_free_dma:
 	pblk_free_rqd_meta(pblk, &rqd);
 	return ret;

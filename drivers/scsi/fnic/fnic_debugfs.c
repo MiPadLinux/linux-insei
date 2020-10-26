@@ -52,7 +52,6 @@ static struct fc_trace_flag_type *fc_trc_flag;
  */
 int fnic_debugfs_init(void)
 {
-	int rc = -1;
 	fnic_trace_debugfs_root = debugfs_create_dir("fnic", NULL);
 
 	fnic_stats_debugfs_root = debugfs_create_dir("statistics",
@@ -70,8 +69,7 @@ int fnic_debugfs_init(void)
 		fc_trc_flag->fc_clear = 4;
 	}
 
-	rc = 0;
-	return rc;
+	return 0;
 }
 
 /*
@@ -122,11 +120,11 @@ static ssize_t fnic_trace_ctrl_read(struct file *filp,
 	len = 0;
 	trace_type = (u8 *)filp->private_data;
 	if (*trace_type == fc_trc_flag->fnic_trace)
-		len = sprintf(buf, "%u\n", fnic_tracing_enabled);
+		len = sprintf(buf, "%d\n", fnic_tracing_enabled);
 	else if (*trace_type == fc_trc_flag->fc_trace)
-		len = sprintf(buf, "%u\n", fnic_fc_tracing_enabled);
+		len = sprintf(buf, "%d\n", fnic_fc_tracing_enabled);
 	else if (*trace_type == fc_trc_flag->fc_clear)
-		len = sprintf(buf, "%u\n", fnic_fc_trace_cleared);
+		len = sprintf(buf, "%d\n", fnic_fc_trace_cleared);
 	else
 		pr_err("fnic: Cannot read to any debugfs file\n");
 

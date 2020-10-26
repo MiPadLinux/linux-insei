@@ -1,19 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Intel MIC Platform Software Stack (MPSS)
  *
  * Copyright(c) 2015 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
  * Intel SCIF driver.
- *
  */
 #include "scif_main.h"
 #include "scif_map.h"
@@ -108,7 +99,7 @@ int scif_reserve_dma_chan(struct scif_endpt *ep)
 }
 
 #ifdef CONFIG_MMU_NOTIFIER
-/**
+/*
  * scif_rma_destroy_tcw:
  *
  * This routine destroys temporary cached windows
@@ -341,6 +332,7 @@ static bool scif_rma_tc_can_cache(struct scif_endpt *ep, size_t cur_bytes)
  * @epd: End Point Descriptor.
  * @addr: virtual address to/from which to copy
  * @len: length of range to copy
+ * @prot: read/write protection
  * @out_offset: computed offset returned by reference.
  * @out_window: allocated registered window returned by reference.
  *

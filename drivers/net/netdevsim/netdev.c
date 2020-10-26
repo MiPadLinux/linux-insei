@@ -22,6 +22,7 @@
 #include <net/netlink.h>
 #include <net/pkt_cls.h>
 #include <net/rtnetlink.h>
+#include <net/udp_tunnel.h>
 
 #include "netdevsim.h"
 
@@ -76,26 +77,6 @@ static int
 nsim_setup_tc_block_cb(enum tc_setup_type type, void *type_data, void *cb_priv)
 {
 	return nsim_bpf_setup_tc_block_cb(type, type_data, cb_priv);
-}
-
-static int
-nsim_setup_tc_block(struct net_device *dev, struct tc_block_offload *f)
-{
-	struct netdevsim *ns = netdev_priv(dev);
-
-	if (f->binder_type != TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
-		return -EOPNOTSUPP;
-
-	switch (f->command) {
-	case TC_BLOCK_BIND:
-		return tcf_block_cb_register(f->block, nsim_setup_tc_block_cb,
-					     ns, ns, f->extack);
-	case TC_BLOCK_UNBIND:
-		tcf_block_cb_unregister(f->block, nsim_setup_tc_block_cb, ns);
-		return 0;
-	default:
-		return -EOPNOTSUPP;
-	}
 }
 
 static int nsim_set_vf_mac(struct net_device *dev, int vf, u8 *mac)
@@ -223,12 +204,19 @@ static int nsim_set_vf_link_state(struct net_device *dev, int vf, int state)
 	return 0;
 }
 
+static LIST_HEAD(nsim_block_cb_list);
+
 static int
 nsim_setup_tc(struct net_device *dev, enum tc_setup_type type, void *type_data)
 {
+	struct netdevsim *ns = netdev_priv(dev);
+
 	switch (type) {
 	case TC_SETUP_BLOCK:
-		return nsim_setup_tc_block(dev, type_data);
+		return flow_block_cb_setup_simple(type_data,
+						  &nsim_block_cb_list,
+						  nsim_setup_tc_block_cb,
+						  ns, ns, true);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -270,6 +258,8 @@ static const struct net_device_ops nsim_netdev_ops = {
 	.ndo_setup_tc		= nsim_setup_tc,
 	.ndo_set_features	= nsim_set_features,
 	.ndo_bpf		= nsim_bpf,
+	.ndo_udp_tunnel_add	= udp_tunnel_nic_add_port,
+	.ndo_udp_tunnel_del	= udp_tunnel_nic_del_port,
 	.ndo_get_devlink_port	= nsim_get_devlink_port,
 };
 
@@ -303,6 +293,7 @@ nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
 
+	dev_net_set(dev, nsim_dev_net(nsim_dev));
 	ns = netdev_priv(dev);
 	ns->netdev = dev;
 	ns->nsim_dev = nsim_dev;
@@ -310,11 +301,16 @@ nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
 	ns->nsim_bus_dev = nsim_dev->nsim_bus_dev;
 	SET_NETDEV_DEV(dev, &ns->nsim_bus_dev->dev);
 	dev->netdev_ops = &nsim_netdev_ops;
+	nsim_ethtool_init(ns);
+
+	err = nsim_udp_tunnels_info_create(nsim_dev, dev);
+	if (err)
+		goto err_free_netdev;
 
 	rtnl_lock();
 	err = nsim_bpf_init(ns);
 	if (err)
-		goto err_free_netdev;
+		goto err_utn_destroy;
 
 	nsim_ipsec_init(ns);
 
@@ -328,7 +324,9 @@ nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
 err_ipsec_teardown:
 	nsim_ipsec_teardown(ns);
 	nsim_bpf_uninit(ns);
+err_utn_destroy:
 	rtnl_unlock();
+	nsim_udp_tunnels_info_destroy(dev);
 err_free_netdev:
 	free_netdev(dev);
 	return ERR_PTR(err);
@@ -343,6 +341,7 @@ void nsim_destroy(struct netdevsim *ns)
 	nsim_ipsec_teardown(ns);
 	nsim_bpf_uninit(ns);
 	rtnl_unlock();
+	nsim_udp_tunnels_info_destroy(dev);
 	free_netdev(dev);
 }
 

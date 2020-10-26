@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Driver for Linear Technology LTC4245 I2C Multiple Supply Hot Swap Controller
  *
  * Copyright (C) 2008 Ira W. Snyder <iws@ovro.caltech.edu>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
  *
  * This driver is based on the ds1621 and ina209 drivers.
  *
@@ -443,8 +440,7 @@ static bool ltc4245_use_extra_gpios(struct i2c_client *client)
 	return false;
 }
 
-static int ltc4245_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int ltc4245_probe(struct i2c_client *client)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	struct ltc4245_data *data;
@@ -483,7 +479,7 @@ static struct i2c_driver ltc4245_driver = {
 	.driver = {
 		.name	= "ltc4245",
 	},
-	.probe		= ltc4245_probe,
+	.probe_new	= ltc4245_probe,
 	.id_table	= ltc4245_id,
 };
 

@@ -15,7 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
-#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/slab.h>
 
 #include <linux/mfd/wm831x/core.h>
@@ -50,7 +50,7 @@ struct wm831x_dcdc {
 	int base;
 	struct wm831x *wm831x;
 	struct regulator_dev *regulator;
-	int dvs_gpio;
+	struct gpio_desc *dvs_gpiod;
 	int dvs_gpio_state;
 	int on_vsel;
 	int dvs_vsel;
@@ -178,11 +178,9 @@ static irqreturn_t wm831x_dcdc_uv_irq(int irq, void *data)
 {
 	struct wm831x_dcdc *dcdc = data;
 
-	regulator_lock(dcdc->regulator);
 	regulator_notifier_call_chain(dcdc->regulator,
 				      REGULATOR_EVENT_UNDER_VOLTAGE,
 				      NULL);
-	regulator_unlock(dcdc->regulator);
 
 	return IRQ_HANDLED;
 }
@@ -191,11 +189,9 @@ static irqreturn_t wm831x_dcdc_oc_irq(int irq, void *data)
 {
 	struct wm831x_dcdc *dcdc = data;
 
-	regulator_lock(dcdc->regulator);
 	regulator_notifier_call_chain(dcdc->regulator,
 				      REGULATOR_EVENT_OVER_CURRENT,
 				      NULL);
-	regulator_unlock(dcdc->regulator);
 
 	return IRQ_HANDLED;
 }
@@ -204,7 +200,7 @@ static irqreturn_t wm831x_dcdc_oc_irq(int irq, void *data)
  * BUCKV specifics
  */
 
-static const struct regulator_linear_range wm831x_buckv_ranges[] = {
+static const struct linear_range wm831x_buckv_ranges[] = {
 	REGULATOR_LINEAR_RANGE(600000, 0, 0x7, 0),
 	REGULATOR_LINEAR_RANGE(600000, 0x8, 0x68, 12500),
 };
@@ -217,7 +213,7 @@ static int wm831x_buckv_set_dvs(struct regulator_dev *rdev, int state)
 		return 0;
 
 	dcdc->dvs_gpio_state = state;
-	gpio_set_value(dcdc->dvs_gpio, state);
+	gpiod_set_value(dcdc->dvs_gpiod, state);
 
 	/* Should wait for DVS state change to be asserted if we have
 	 * a GPIO for it, for now assume the device is configured
@@ -237,10 +233,10 @@ static int wm831x_buckv_set_voltage_sel(struct regulator_dev *rdev,
 	int ret;
 
 	/* If this value is already set then do a GPIO update if we can */
-	if (dcdc->dvs_gpio && dcdc->on_vsel == vsel)
+	if (dcdc->dvs_gpiod && dcdc->on_vsel == vsel)
 		return wm831x_buckv_set_dvs(rdev, 0);
 
-	if (dcdc->dvs_gpio && dcdc->dvs_vsel == vsel)
+	if (dcdc->dvs_gpiod && dcdc->dvs_vsel == vsel)
 		return wm831x_buckv_set_dvs(rdev, 1);
 
 	/* Always set the ON status to the minimum voltage */
@@ -249,7 +245,7 @@ static int wm831x_buckv_set_voltage_sel(struct regulator_dev *rdev,
 		return ret;
 	dcdc->on_vsel = vsel;
 
-	if (!dcdc->dvs_gpio)
+	if (!dcdc->dvs_gpiod)
 		return ret;
 
 	/* Kick the voltage transition now */
@@ -296,7 +292,7 @@ static int wm831x_buckv_get_voltage_sel(struct regulator_dev *rdev)
 {
 	struct wm831x_dcdc *dcdc = rdev_get_drvdata(rdev);
 
-	if (dcdc->dvs_gpio && dcdc->dvs_gpio_state)
+	if (dcdc->dvs_gpiod && dcdc->dvs_gpio_state)
 		return dcdc->dvs_vsel;
 	else
 		return dcdc->on_vsel;
@@ -337,7 +333,7 @@ static void wm831x_buckv_dvs_init(struct platform_device *pdev,
 	int ret;
 	u16 ctrl;
 
-	if (!pdata || !pdata->dvs_gpio)
+	if (!pdata)
 		return;
 
 	/* gpiolib won't let us read the GPIO status so pick the higher
@@ -345,16 +341,13 @@ static void wm831x_buckv_dvs_init(struct platform_device *pdev,
 	 */
 	dcdc->dvs_gpio_state = pdata->dvs_init_state;
 
-	ret = devm_gpio_request_one(&pdev->dev, pdata->dvs_gpio,
-				    dcdc->dvs_gpio_state ? GPIOF_INIT_HIGH : 0,
-				    "DCDC DVS");
-	if (ret < 0) {
-		dev_err(wm831x->dev, "Failed to get %s DVS GPIO: %d\n",
-			dcdc->name, ret);
+	dcdc->dvs_gpiod = devm_gpiod_get(&pdev->dev, "dvs",
+			dcdc->dvs_gpio_state ? GPIOD_OUT_HIGH : GPIOD_OUT_LOW);
+	if (IS_ERR(dcdc->dvs_gpiod)) {
+		dev_err(wm831x->dev, "Failed to get %s DVS GPIO: %ld\n",
+			dcdc->name, PTR_ERR(dcdc->dvs_gpiod));
 		return;
 	}
-
-	dcdc->dvs_gpio = pdata->dvs_gpio;
 
 	switch (pdata->dvs_control_src) {
 	case 1:

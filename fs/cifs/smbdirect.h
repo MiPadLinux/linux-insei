@@ -1,17 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  *   Copyright (C) 2017, Microsoft Corporation.
  *
  *   Author(s): Long Li <longli@microsoft.com>
- *
- *   This program is free software;  you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY;  without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
- *   the GNU General Public License for more details.
  */
 #ifndef _SMBDIRECT_H
 #define _SMBDIRECT_H
@@ -76,7 +67,6 @@ struct smbd_connection {
 	bool negotiate_done;
 
 	struct work_struct disconnect_work;
-	struct work_struct recv_done_work;
 	struct work_struct post_send_credits_work;
 
 	spinlock_t lock_new_credits_offered;
@@ -124,8 +114,7 @@ struct smbd_connection {
 	/* Activity accoutning */
 	atomic_t send_pending;
 	wait_queue_head_t wait_send_pending;
-	atomic_t send_payload_pending;
-	wait_queue_head_t wait_send_payload_pending;
+	wait_queue_head_t wait_post_send;
 
 	/* Receive queue */
 	struct list_head receive_queue;
@@ -164,7 +153,6 @@ struct smbd_connection {
 
 	struct workqueue_struct *workqueue;
 	struct delayed_work idle_timer_work;
-	struct delayed_work send_immediate_work;
 
 	/* Memory pool for preallocating buffers */
 	/* request pool for RDMA send */
@@ -243,9 +231,6 @@ struct smbd_buffer_descriptor_v1 {
 struct smbd_request {
 	struct smbd_connection *info;
 	struct ib_cqe cqe;
-
-	/* true if this request carries upper layer payload */
-	bool has_payload;
 
 	/* the SGE entries for this packet */
 	struct ib_sge sge[SMBDIRECT_MAX_SGE];

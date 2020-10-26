@@ -508,7 +508,7 @@ static int atmel_lcdfb_check_var(struct fb_var_screeninfo *var,
 	case 32:
 		var->transp.offset = 24;
 		var->transp.length = 8;
-		/* fall through */
+		fallthrough;
 	case 24:
 		if (pdata->lcd_wiring_mode == ATMEL_LCDC_WIRING_RGB) {
 			/* RGB:888 mode */
@@ -633,7 +633,7 @@ static int atmel_lcdfb_set_par(struct fb_info *info)
 		case 2: value |= ATMEL_LCDC_PIXELSIZE_2; break;
 		case 4: value |= ATMEL_LCDC_PIXELSIZE_4; break;
 		case 8: value |= ATMEL_LCDC_PIXELSIZE_8; break;
-		case 15: /* fall through */
+		case 15: fallthrough;
 		case 16: value |= ATMEL_LCDC_PIXELSIZE_16; break;
 		case 24: value |= ATMEL_LCDC_PIXELSIZE_24; break;
 		case 32: value |= ATMEL_LCDC_PIXELSIZE_32; break;
@@ -673,7 +673,7 @@ static int atmel_lcdfb_set_par(struct fb_info *info)
 	lcdc_writel(sinfo, ATMEL_LCDC_MVAL, 0);
 
 	/* Disable all interrupts */
-	lcdc_writel(sinfo, ATMEL_LCDC_IDR, ~0UL);
+	lcdc_writel(sinfo, ATMEL_LCDC_IDR, ~0U);
 	/* Enable FIFO & DMA errors */
 	lcdc_writel(sinfo, ATMEL_LCDC_IER, ATMEL_LCDC_UFLWI | ATMEL_LCDC_OWRI | ATMEL_LCDC_MERI);
 
@@ -824,7 +824,7 @@ static int atmel_lcdfb_blank(int blank_mode, struct fb_info *info)
 	return ((blank_mode == FB_BLANK_NORMAL) ? 1 : 0);
 }
 
-static struct fb_ops atmel_lcdfb_ops = {
+static const struct fb_ops atmel_lcdfb_ops = {
 	.owner		= THIS_MODULE,
 	.fb_check_var	= atmel_lcdfb_check_var,
 	.fb_set_par	= atmel_lcdfb_set_par,
@@ -950,7 +950,7 @@ static int atmel_lcdfb_of_init(struct atmel_lcdfb_info *sinfo)
 	struct fb_videomode fb_vm;
 	struct gpio_desc *gpiod;
 	struct videomode vm;
-	int ret = -ENOENT;
+	int ret;
 	int i;
 
 	sinfo->config = (struct atmel_lcdfb_config*)
@@ -1053,10 +1053,8 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 
 	ret = -ENOMEM;
 	info = framebuffer_alloc(sizeof(struct atmel_lcdfb_info), dev);
-	if (!info) {
-		dev_err(dev, "cannot allocate memory\n");
+	if (!info)
 		goto out;
-	}
 
 	sinfo = info->par;
 	sinfo->pdev = pdev;
@@ -1116,7 +1114,6 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 
 	sinfo->irq_base = platform_get_irq(pdev, 0);
 	if (sinfo->irq_base < 0) {
-		dev_err(dev, "unable to get irq\n");
 		ret = sinfo->irq_base;
 		goto stop_clk;
 	}
@@ -1291,7 +1288,7 @@ static int atmel_lcdfb_suspend(struct platform_device *pdev, pm_message_t mesg)
 	 * We don't want to handle interrupts while the clock is
 	 * stopped. It may take forever.
 	 */
-	lcdc_writel(sinfo, ATMEL_LCDC_IDR, ~0UL);
+	lcdc_writel(sinfo, ATMEL_LCDC_IDR, ~0U);
 
 	sinfo->saved_lcdcon = lcdc_readl(sinfo, ATMEL_LCDC_CONTRAST_CTR);
 	lcdc_writel(sinfo, ATMEL_LCDC_CONTRAST_CTR, 0);

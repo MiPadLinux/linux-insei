@@ -8,7 +8,9 @@
 
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include <linux/firmware/imx/ipc.h>
+#include <linux/firmware/imx/sci.h>
 #include <linux/mailbox_client.h>
+#include <linux/suspend.h>
 
 #define IMX_SC_IRQ_FUNC_ENABLE	1
 #define IMX_SC_IRQ_FUNC_STATUS	2
@@ -90,6 +92,7 @@ static void imx_scu_irq_work_handler(struct work_struct *work)
 		if (!irq_status)
 			continue;
 
+		pm_system_wakeup();
 		imx_scu_irq_notifier_call_chain(irq_status, &i);
 	}
 }
@@ -99,6 +102,9 @@ int imx_scu_irq_group_enable(u8 group, u32 mask, u8 enable)
 	struct imx_sc_msg_irq_enable msg;
 	struct imx_sc_rpc_msg *hdr = &msg.hdr;
 	int ret;
+
+	if (!imx_sc_irq_ipc_handle)
+		return -EPROBE_DEFER;
 
 	hdr->ver = IMX_SC_RPC_VERSION;
 	hdr->svc = IMX_SC_RPC_SVC_IRQ;

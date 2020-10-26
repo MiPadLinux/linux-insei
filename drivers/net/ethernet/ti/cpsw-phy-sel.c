@@ -67,7 +67,7 @@ static void cpsw_gmii_sel_am3352(struct cpsw_phy_sel_priv *priv,
 		dev_warn(priv->dev,
 			 "Unsupported PHY mode: \"%s\". Defaulting to MII.\n",
 			phy_modes(phy_mode));
-		/* fallthrough */
+		fallthrough;
 	case PHY_INTERFACE_MODE_MII:
 		mode = AM33XX_GMII_SEL_MODE_MII;
 		break;
@@ -122,7 +122,7 @@ static void cpsw_gmii_sel_dra7xx(struct cpsw_phy_sel_priv *priv,
 		dev_warn(priv->dev,
 			 "Unsupported PHY mode: \"%s\". Defaulting to MII.\n",
 			phy_modes(phy_mode));
-		/* fallthrough */
+		fallthrough;
 	case PHY_INTERFACE_MODE_MII:
 		mode = AM33XX_GMII_SEL_MODE_MII;
 		break;
@@ -151,9 +151,9 @@ static void cpsw_gmii_sel_dra7xx(struct cpsw_phy_sel_priv *priv,
 }
 
 static struct platform_driver cpsw_phy_sel_driver;
-static int match(struct device *dev, void *data)
+static int match(struct device *dev, const void *data)
 {
-	struct device_node *node = (struct device_node *)data;
+	const struct device_node *node = (const struct device_node *)data;
 	return dev->of_node == node &&
 		dev->driver == &cpsw_phy_sel_driver.driver;
 }

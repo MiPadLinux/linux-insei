@@ -1,12 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright 2013 Gateworks Corporation
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 /dts-v1/;
@@ -21,19 +15,16 @@
 	sound-digital {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "tda1997x-audio";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&sound_codec>;
+		simple-audio-card,frame-master = <&sound_codec>;
 
-		simple-audio-card,dai-link@0 {
-			format = "i2s";
+		sound_cpu: simple-audio-card,cpu {
+			sound-dai = <&ssi2>;
+		};
 
-			cpu {
-				sound-dai = <&ssi2>;
-			};
-
-			codec {
-				bitclock-master;
-				frame-master;
-				sound-dai = <&hdmi_receiver>;
-			};
+		sound_codec: simple-audio-card,codec {
+			sound-dai = <&hdmi_receiver>;
 		};
 	};
 };

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Using hardware provided CRC32 instruction to accelerate the CRC32 disposal.
  * CRC32C polynomial:0x1EDC6F41(BE)/0x82F63B78(LE)
@@ -9,20 +10,6 @@
  * Copyright (C) 2008 Intel Corporation
  * Authors: Austin Zhang <austin_zhang@linux.intel.com>
  *          Kent Liu <kent.liu@intel.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
  */
 #include <linux/init.h>
 #include <linux/module.h>
@@ -41,9 +28,9 @@
 #define SCALE_F	sizeof(unsigned long)
 
 #ifdef CONFIG_X86_64
-#define REX_PRE "0x48, "
+#define CRC32_INST "crc32q %1, %q0"
 #else
-#define REX_PRE
+#define CRC32_INST "crc32l %1, %0"
 #endif
 
 #ifdef CONFIG_X86_64
@@ -61,11 +48,8 @@ asmlinkage unsigned int crc_pcl(const u8 *buffer, int len,
 static u32 crc32c_intel_le_hw_byte(u32 crc, unsigned char const *data, size_t length)
 {
 	while (length--) {
-		__asm__ __volatile__(
-			".byte 0xf2, 0xf, 0x38, 0xf0, 0xf1"
-			:"=S"(crc)
-			:"0"(crc), "c"(*data)
-		);
+		asm("crc32b %1, %0"
+		    : "+r" (crc) : "rm" (*data));
 		data++;
 	}
 
@@ -79,11 +63,8 @@ static u32 __pure crc32c_intel_le_hw(u32 crc, unsigned char const *p, size_t len
 	unsigned long *ptmp = (unsigned long *)p;
 
 	while (iquotient--) {
-		__asm__ __volatile__(
-			".byte 0xf2, " REX_PRE "0xf, 0x38, 0xf1, 0xf1;"
-			:"=S"(crc)
-			:"0"(crc), "c"(*ptmp)
-		);
+		asm(CRC32_INST
+		    : "+r" (crc) : "rm" (*ptmp));
 		ptmp++;
 	}
 
@@ -104,10 +85,8 @@ static int crc32c_intel_setkey(struct crypto_shash *hash, const u8 *key,
 {
 	u32 *mctx = crypto_shash_ctx(hash);
 
-	if (keylen != sizeof(u32)) {
-		crypto_shash_set_flags(hash, CRYPTO_TFM_RES_BAD_KEY_LEN);
+	if (keylen != sizeof(u32))
 		return -EINVAL;
-	}
 	*mctx = le32_to_cpup((__le32 *)key);
 	return 0;
 }
@@ -236,7 +215,7 @@ static struct shash_alg alg = {
 };
 
 static const struct x86_cpu_id crc32c_cpu_id[] = {
-	X86_FEATURE_MATCH(X86_FEATURE_XMM4_2),
+	X86_MATCH_FEATURE(X86_FEATURE_XMM4_2, NULL),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, crc32c_cpu_id);

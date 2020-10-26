@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * address space "slices" (meta-segments) support
  *
@@ -6,20 +7,6 @@
  * Based on hugetlb implementation
  *
  * Copyright (C) 2003 David Gibson, IBM Corporation.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 #undef DEBUG
@@ -63,7 +50,7 @@ static void slice_print_mask(const char *label, const struct slice_mask *mask) {
 
 #endif
 
-static inline bool slice_addr_is_low(unsigned long addr)
+static inline notrace bool slice_addr_is_low(unsigned long addr)
 {
 	u64 tmp = (u64)addr;
 
@@ -491,7 +478,7 @@ unsigned long slice_get_unmapped_area(unsigned long addr, unsigned long len,
 
 	/* If hint, make sure it matches our alignment restrictions */
 	if (!fixed && addr) {
-		addr = _ALIGN_UP(addr, page_size);
+		addr = ALIGN(addr, page_size);
 		slice_dbg(" aligned addr=%lx\n", addr);
 		/* Ignore hint if it's too large or overlaps a VMA */
 		if (addr > high_limit - len || addr < mmap_min_addr ||
@@ -672,7 +659,7 @@ unsigned long arch_get_unmapped_area_topdown(struct file *filp,
 				       mm_ctx_user_psize(&current->mm->context), 1);
 }
 
-unsigned int get_slice_psize(struct mm_struct *mm, unsigned long addr)
+unsigned int notrace get_slice_psize(struct mm_struct *mm, unsigned long addr)
 {
 	unsigned char *psizes;
 	int index, mask_index;

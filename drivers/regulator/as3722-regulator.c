@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Voltage regulator support for AMS AS3722 PMIC
  *
@@ -5,21 +6,6 @@
  *
  * Author: Florian Lobmaier <florian.lobmaier@ams.com>
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
- *
  */
 
 #include <linux/err.h>
@@ -403,7 +389,7 @@ static const struct regulator_ops as3722_ldo6_extcntrl_ops = {
 	.set_bypass = regulator_set_bypass_regmap,
 };
 
-static const struct regulator_linear_range as3722_ldo_ranges[] = {
+static const struct linear_range as3722_ldo_ranges[] = {
 	REGULATOR_LINEAR_RANGE(0, 0x00, 0x00, 0),
 	REGULATOR_LINEAR_RANGE(825000, 0x01, 0x24, 25000),
 	REGULATOR_LINEAR_RANGE(1725000, 0x40, 0x7F, 25000),
@@ -501,7 +487,7 @@ static bool as3722_sd0_is_low_voltage(struct as3722_regulators *as3722_regs)
 	return false;
 }
 
-static const struct regulator_linear_range as3722_sd2345_ranges[] = {
+static const struct linear_range as3722_sd2345_ranges[] = {
 	REGULATOR_LINEAR_RANGE(0, 0x00, 0x00, 0),
 	REGULATOR_LINEAR_RANGE(612500, 0x01, 0x40, 12500),
 	REGULATOR_LINEAR_RANGE(1425000, 0x41, 0x70, 25000),

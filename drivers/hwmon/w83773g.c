@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2017 IBM Corp.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  *
  * Driver for the Nuvoton W83773G SMBus temperature sensor IC.
  * Supported models: W83773G
@@ -263,8 +259,7 @@ static const struct regmap_config w83773_regmap_config = {
 	.val_bits = 8,
 };
 
-static int w83773_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int w83773_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;
@@ -300,7 +295,7 @@ static struct i2c_driver w83773_driver = {
 		.name	= "w83773g",
 		.of_match_table = of_match_ptr(w83773_of_match),
 	},
-	.probe = w83773_probe,
+	.probe_new = w83773_probe,
 	.id_table = w83773_id,
 };
 

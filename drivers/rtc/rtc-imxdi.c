@@ -95,7 +95,7 @@
 
 /**
  * struct imxdi_dev - private imxdi rtc data
- * @pdev: pionter to platform dev
+ * @pdev: pointer to platform dev
  * @rtc: pointer to rtc struct
  * @ioaddr: IO registers pointer
  * @clk: input reference clock
@@ -350,7 +350,7 @@ static int di_handle_invalid_and_failure_state(struct imxdi_dev *imxdi, u32 dsr)
 			 * the tamper register is locked. We cannot disable the
 			 * tamper detection. The TDCHL can only be reset by a
 			 * DRYICE POR, but we cannot force a DRYICE POR in
-			 * softwere because we are still in "FAILURE STATE".
+			 * software because we are still in "FAILURE STATE".
 			 * We need a DRYICE POR via battery power cycling....
 			 */
 			/*
@@ -740,7 +740,6 @@ static void dryice_work(struct work_struct *work)
  */
 static int __init dryice_rtc_probe(struct platform_device *pdev)
 {
-	struct resource *res;
 	struct imxdi_dev *imxdi;
 	int norm_irq, sec_irq;
 	int rc;
@@ -751,8 +750,7 @@ static int __init dryice_rtc_probe(struct platform_device *pdev)
 
 	imxdi->pdev = pdev;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	imxdi->ioaddr = devm_ioremap_resource(&pdev->dev, res);
+	imxdi->ioaddr = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(imxdi->ioaddr))
 		return PTR_ERR(imxdi->ioaddr);
 

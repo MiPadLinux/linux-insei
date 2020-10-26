@@ -1,12 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * Copyright (C) 2015 ARM Limited
  */
@@ -53,16 +46,13 @@
  * require cooperation with a Trusted OS driver.
  */
 static int resident_cpu = -1;
+struct psci_operations psci_ops;
+static enum arm_smccc_conduit psci_conduit = SMCCC_CONDUIT_NONE;
 
 bool psci_tos_resident_on(int cpu)
 {
 	return cpu == resident_cpu;
 }
-
-struct psci_operations psci_ops = {
-	.conduit = PSCI_CONDUIT_NONE,
-	.smccc_version = SMCCC_VERSION_1_0,
-};
 
 typedef unsigned long (psci_fn)(unsigned long, unsigned long,
 				unsigned long, unsigned long);
@@ -96,7 +86,7 @@ static inline bool psci_has_ext_power_state(void)
 				PSCI_1_0_FEATURES_CPU_SUSPEND_PF_MASK;
 }
 
-static inline bool psci_has_osi_support(void)
+bool psci_has_osi_support(void)
 {
 	return psci_cpu_suspend_feature & PSCI_1_0_OS_INITIATED;
 }
@@ -110,7 +100,7 @@ static inline bool psci_power_state_loses_context(u32 state)
 	return state & mask;
 }
 
-static inline bool psci_power_state_is_valid(u32 state)
+bool psci_power_state_is_valid(u32 state)
 {
 	const u32 valid_mask = psci_has_ext_power_state() ?
 			       PSCI_1_0_EXT_POWER_STATE_MASK :
@@ -159,6 +149,18 @@ static int psci_to_linux_errno(int errno)
 static u32 psci_get_version(void)
 {
 	return invoke_psci_fn(PSCI_0_2_FN_PSCI_VERSION, 0, 0, 0);
+}
+
+int psci_set_osi_mode(bool enable)
+{
+	unsigned long suspend_mode;
+	int err;
+
+	suspend_mode = enable ? PSCI_1_0_SUSPEND_MODE_OSI :
+			PSCI_1_0_SUSPEND_MODE_PC;
+
+	err = invoke_psci_fn(PSCI_1_0_FN_SET_SUSPEND_MODE, suspend_mode, 0, 0);
+	return psci_to_linux_errno(err);
 }
 
 static int psci_cpu_suspend(u32 state, unsigned long entry_point)
@@ -219,20 +221,20 @@ static unsigned long psci_migrate_info_up_cpu(void)
 			      0, 0, 0);
 }
 
-static void set_conduit(enum psci_conduit conduit)
+static void set_conduit(enum arm_smccc_conduit conduit)
 {
 	switch (conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		invoke_psci_fn = __invoke_psci_fn_hvc;
 		break;
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		invoke_psci_fn = __invoke_psci_fn_smc;
 		break;
 	default:
 		WARN(1, "Unexpected PSCI conduit %d\n", conduit);
 	}
 
-	psci_ops.conduit = conduit;
+	psci_conduit = conduit;
 }
 
 static int get_set_conduit_method(struct device_node *np)
@@ -247,9 +249,9 @@ static int get_set_conduit_method(struct device_node *np)
 	}
 
 	if (!strcmp("hvc", method)) {
-		set_conduit(PSCI_CONDUIT_HVC);
+		set_conduit(SMCCC_CONDUIT_HVC);
 	} else if (!strcmp("smc", method)) {
-		set_conduit(PSCI_CONDUIT_SMC);
+		set_conduit(SMCCC_CONDUIT_SMC);
 	} else {
 		pr_warn("invalid \"method\" property: %s\n", method);
 		return -EINVAL;
@@ -284,175 +286,24 @@ static int __init psci_features(u32 psci_func_id)
 }
 
 #ifdef CONFIG_CPU_IDLE
-static DEFINE_PER_CPU_READ_MOSTLY(u32 *, psci_power_state);
-
-static int psci_dt_parse_state_node(struct device_node *np, u32 *state)
+static int psci_suspend_finisher(unsigned long state)
 {
-	int err = of_property_read_u32(np, "arm,psci-suspend-param", state);
+	u32 power_state = state;
 
-	if (err) {
-		pr_warn("%pOF missing arm,psci-suspend-param property\n", np);
-		return err;
-	}
-
-	if (!psci_power_state_is_valid(*state)) {
-		pr_warn("Invalid PSCI power state %#x\n", *state);
-		return -EINVAL;
-	}
-
-	return 0;
+	return psci_ops.cpu_suspend(power_state, __pa_symbol(cpu_resume));
 }
 
-static int psci_dt_cpu_init_idle(struct device_node *cpu_node, int cpu)
+int psci_cpu_suspend_enter(u32 state)
 {
-	int i, ret = 0, count = 0;
-	u32 *psci_states;
-	struct device_node *state_node;
-
-	/* Count idle states */
-	while ((state_node = of_parse_phandle(cpu_node, "cpu-idle-states",
-					      count))) {
-		count++;
-		of_node_put(state_node);
-	}
-
-	if (!count)
-		return -ENODEV;
-
-	psci_states = kcalloc(count, sizeof(*psci_states), GFP_KERNEL);
-	if (!psci_states)
-		return -ENOMEM;
-
-	for (i = 0; i < count; i++) {
-		state_node = of_parse_phandle(cpu_node, "cpu-idle-states", i);
-		ret = psci_dt_parse_state_node(state_node, &psci_states[i]);
-		of_node_put(state_node);
-
-		if (ret)
-			goto free_mem;
-
-		pr_debug("psci-power-state %#x index %d\n", psci_states[i], i);
-	}
-
-	/* Idle states parsed correctly, initialize per-cpu pointer */
-	per_cpu(psci_power_state, cpu) = psci_states;
-	return 0;
-
-free_mem:
-	kfree(psci_states);
-	return ret;
-}
-
-#ifdef CONFIG_ACPI
-#include <acpi/processor.h>
-
-static int __maybe_unused psci_acpi_cpu_init_idle(unsigned int cpu)
-{
-	int i, count;
-	u32 *psci_states;
-	struct acpi_lpi_state *lpi;
-	struct acpi_processor *pr = per_cpu(processors, cpu);
-
-	if (unlikely(!pr || !pr->flags.has_lpi))
-		return -EINVAL;
-
-	count = pr->power.count - 1;
-	if (count <= 0)
-		return -ENODEV;
-
-	psci_states = kcalloc(count, sizeof(*psci_states), GFP_KERNEL);
-	if (!psci_states)
-		return -ENOMEM;
-
-	for (i = 0; i < count; i++) {
-		u32 state;
-
-		lpi = &pr->power.lpi_states[i + 1];
-		/*
-		 * Only bits[31:0] represent a PSCI power_state while
-		 * bits[63:32] must be 0x0 as per ARM ACPI FFH Specification
-		 */
-		state = lpi->address;
-		if (!psci_power_state_is_valid(state)) {
-			pr_warn("Invalid PSCI power state %#x\n", state);
-			kfree(psci_states);
-			return -EINVAL;
-		}
-		psci_states[i] = state;
-	}
-	/* Idle states parsed correctly, initialize per-cpu pointer */
-	per_cpu(psci_power_state, cpu) = psci_states;
-	return 0;
-}
-#else
-static int __maybe_unused psci_acpi_cpu_init_idle(unsigned int cpu)
-{
-	return -EINVAL;
-}
-#endif
-
-int psci_cpu_init_idle(unsigned int cpu)
-{
-	struct device_node *cpu_node;
 	int ret;
 
-	/*
-	 * If the PSCI cpu_suspend function hook has not been initialized
-	 * idle states must not be enabled, so bail out
-	 */
-	if (!psci_ops.cpu_suspend)
-		return -EOPNOTSUPP;
-
-	if (!acpi_disabled)
-		return psci_acpi_cpu_init_idle(cpu);
-
-	cpu_node = of_get_cpu_node(cpu, NULL);
-	if (!cpu_node)
-		return -ENODEV;
-
-	ret = psci_dt_cpu_init_idle(cpu_node, cpu);
-
-	of_node_put(cpu_node);
-
-	return ret;
-}
-
-static int psci_suspend_finisher(unsigned long index)
-{
-	u32 *state = __this_cpu_read(psci_power_state);
-
-	return psci_ops.cpu_suspend(state[index - 1],
-				    __pa_symbol(cpu_resume));
-}
-
-int psci_cpu_suspend_enter(unsigned long index)
-{
-	int ret;
-	u32 *state = __this_cpu_read(psci_power_state);
-	/*
-	 * idle state index 0 corresponds to wfi, should never be called
-	 * from the cpu_suspend operations
-	 */
-	if (WARN_ON_ONCE(!index))
-		return -EINVAL;
-
-	if (!psci_power_state_loses_context(state[index - 1]))
-		ret = psci_ops.cpu_suspend(state[index - 1], 0);
+	if (!psci_power_state_loses_context(state))
+		ret = psci_ops.cpu_suspend(state, 0);
 	else
-		ret = cpu_suspend(index, psci_suspend_finisher);
+		ret = cpu_suspend(state, psci_suspend_finisher);
 
 	return ret;
 }
-
-/* ARM specific CPU idle operations */
-#ifdef CONFIG_ARM
-static const struct cpuidle_ops psci_cpuidle_ops __initconst = {
-	.suspend = psci_cpu_suspend_enter,
-	.init = psci_dt_cpu_init_idle,
-};
-
-CPUIDLE_METHOD_OF_DECLARE(psci, "psci", &psci_cpuidle_ops);
-#endif
 #endif
 
 static int psci_system_suspend(unsigned long unused)
@@ -552,8 +403,8 @@ static void __init psci_init_smccc(void)
 	if (feature != PSCI_RET_NOT_SUPPORTED) {
 		u32 ret;
 		ret = invoke_psci_fn(ARM_SMCCC_VERSION_FUNC_ID, 0, 0, 0);
-		if (ret == ARM_SMCCC_VERSION_1_1) {
-			psci_ops.smccc_version = SMCCC_VERSION_1_1;
+		if (ret >= ARM_SMCCC_VERSION_1_1) {
+			arm_smccc_version_init(ret, psci_conduit);
 			ver = ret;
 		}
 	}
@@ -694,8 +545,12 @@ static int __init psci_1_0_init(struct device_node *np)
 	if (err)
 		return err;
 
-	if (psci_has_osi_support())
+	if (psci_has_osi_support()) {
 		pr_info("OSI mode supported.\n");
+
+		/* Default to PC mode. */
+		psci_set_osi_mode(false);
+	}
 
 	return 0;
 }
@@ -741,9 +596,9 @@ int __init psci_acpi_init(void)
 	pr_info("probing for conduit method from ACPI.\n");
 
 	if (acpi_psci_use_hvc())
-		set_conduit(PSCI_CONDUIT_HVC);
+		set_conduit(SMCCC_CONDUIT_HVC);
 	else
-		set_conduit(PSCI_CONDUIT_SMC);
+		set_conduit(SMCCC_CONDUIT_SMC);
 
 	return psci_probe();
 }

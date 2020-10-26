@@ -1,10 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) Sistina Software, Inc.  1997-2003 All rights reserved.
  * Copyright (C) 2004-2006 Red Hat, Inc.  All rights reserved.
- *
- * This copyrighted material is made available to anyone wishing to use,
- * modify, copy, or redistribute it subject to the terms and conditions
- * of the GNU General Public License version 2.
  */
 
 #ifndef __INODE_DOT_H__
@@ -95,7 +92,7 @@ extern struct inode *gfs2_inode_lookup(struct super_block *sb, unsigned type,
 				       u64 no_addr, u64 no_formal_ino,
 				       unsigned int blktype);
 extern struct inode *gfs2_lookup_by_inum(struct gfs2_sbd *sdp, u64 no_addr,
-					 u64 *no_formal_ino,
+					 u64 no_formal_ino,
 					 unsigned int blktype);
 
 extern int gfs2_inode_refresh(struct gfs2_inode *ip);
