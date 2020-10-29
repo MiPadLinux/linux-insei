@@ -104,6 +104,10 @@
 	mipi: mipi@700e3000 {
 		status = "okay";
 	};
+	
+	uartd: serial@70006300 {
+		status = "okay";
+	};
 
 	cpus {
 		cpu@0 {
