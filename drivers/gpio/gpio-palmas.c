@@ -14,6 +14,8 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
+static struct palmas_gpio *tps65910_gpio;
+
 struct palmas_gpio {
 	struct gpio_chip gpio_chip;
 	struct palmas *palmas;
@@ -99,6 +101,16 @@ static int palmas_gpio_output(struct gpio_chip *gc, unsigned offset,
 	return ret;
 }
 
+int tps6591x_gpio7_enable(bool enable)
+{
+	if (enable)
+		palmas_gpio_output(&tps65910_gpio->gpio_chip, 7, 1);
+	else
+		palmas_gpio_output(&tps65910_gpio->gpio_chip, 7, 0);
+
+ 	return 0;
+}
+
 static int palmas_gpio_input(struct gpio_chip *gc, unsigned offset)
 {
 	struct palmas_gpio *pg = gpiochip_get_data(gc);
@@ -182,7 +194,7 @@ static int palmas_gpio_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Could not register gpiochip, %d\n", ret);
 		return ret;
 	}
-
+	tps65910_gpio = palmas_gpio;
 	return ret;
 }
 
