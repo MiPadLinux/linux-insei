@@ -21,6 +21,30 @@
  #include <dt-bindings/gpio/tegra-gpio.h>
 
 / {
+	i2c@7000c400 {
+		bq2419x: bq2419x@6b {
+			compatible = "ti,bq2419x";
+			interrupt-parent = <&gpio>;
+			interrupts = <72 IRQ_TYPE_LEVEL_HIGH>;
+			ti,watchdog-timeout = <40>;
+            ti,maximum-in-voltage-limit = <4200>;
+            ti,fast-charge-current-limit = <2500>;
+			reg = <0x6b>;
+
+			battery_charger: charger {
+				regulator-name = "charger";
+				regulator-max-microamp = <2000000>;
+				regulator-min-microamp = <100000>;
+			};
+
+			usb0_vbus_reg: vbus {
+				regulator-name = "vbus";
+				regulator-min-microvolt = <0>;
+                regulator-max-microvolt = <5000000>;
+			};
+		};
+	};
+
 	i2c@7000d000 {
 		palmas: tps65913@58 {
 			compatible = "ti,palmas";
