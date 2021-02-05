@@ -10,7 +10,8 @@ Optional properties:
 - ti,maximum-in-voltage-limit: Maximum input voltage (mV) for charger.
 - ti,fast-charge-current-limit: Maximum fast charge current (mA) limit.
 - otg-iusb-gpio: GPIO number for the OTG boost mode.
-
+- extcon: phandle to extcon device for detecting USB-HOST and USB connection and controling regulators, 
+if usb host driver not control this. Events: EXTCON_USB, EXTCON_USB_HOST.
 
 Any standard regulator properties can be used to configure the VBUS and charging regulator.
 The driver supports two regualtors:
@@ -18,6 +19,7 @@ vbus regulator for vbus supply from device. This is voltage regulator.
 charger regualtor for chargign battery. This is current regulator.
 
 Example:
+	   
 
        bq2419x {
                compatible = "ti,bq2419x";
@@ -27,6 +29,7 @@ Example:
                ti,maximum-in-voltage-limit = <4200>;
                ti,fast-charge-current-limit = <2500>;
                otg-iusb-gpio = <&gpio 130 GPIO_ACTIVE_HIGH>;
+               extcon = <&palmas_extcon>;
 
                regulators {
                        vbus {
