@@ -36,6 +36,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of.h>
 #include <linux/slab.h>
+#include <linux/power_supply.h>
 #include <linux/extcon.h>
 #include <linux/workqueue.h>
 #include <linux/notifier.h>
@@ -95,6 +96,9 @@
 #define BQ2419x_FAULT_CHRG_THERMAL             0x20
 #define BQ2419x_FAULT_CHRG_SAFTY               0x30
 #define BQ2419x_FAULT_NTC_FAULT                        0x07
+
+/* Need only for mocha tegra t124 board */
+extern int tps6591x_gpio7_enable(bool enable);
 
 /* Input current limit */
 static const unsigned int bq2419x_charging_current[] = {
@@ -476,6 +480,16 @@ static int bq2419x_reset_safety_timer(struct bq2419x_chip *bq2419x)
        return ret;
 }
 
+int palmas_pin_control(struct bq2419x_chip *bq2419x)
+{
+	int value = 1;
+	if (bq2419x->cable.connected) {
+		if(!bq2419x->cable.is_otg)
+			value = 0;
+	}
+	return tps6591x_gpio7_enable(value);
+}
+
 static int bq2419x_charger_handle_cable_evt(struct notifier_block *nb,
 					  unsigned long event, void *param)
 {
@@ -500,6 +514,9 @@ static int bq2419x_charger_handle_cable_evt(struct notifier_block *nb,
 		dev_dbg(bq2419x->dev, "USB or USB-host disconnected");
 		bq2419x->cable.connected = 0;
 	}
+
+	if (palmas_pin_control(bq2419x))
+		dev_dbg(bq2419x->dev, "only for mocha: palmas_pin_control failed");
 
 	return NOTIFY_OK;
 }
