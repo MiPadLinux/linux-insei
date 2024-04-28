@@ -761,8 +761,7 @@ static const struct regmap_config bq2419x_regmap_config = {
        .max_register           = BQ2419X_MAX_REGS,
 };
 
-static int bq2419x_probe(struct i2c_client *client,
-                               const struct i2c_device_id *id)
+static int bq2419x_probe(struct i2c_client *client)
 {
 	struct bq2419x_chip *bq2419x;
 	int i, ret = 0;
@@ -891,7 +890,7 @@ scrub_mutex:
 	return ret;
 }
 
-static int bq2419x_remove(struct i2c_client *client)
+static void bq2419x_remove(struct i2c_client *client)
 {
        struct bq2419x_chip *bq2419x = i2c_get_clientdata(client);
 
@@ -899,7 +898,6 @@ static int bq2419x_remove(struct i2c_client *client)
        regulator_unregister(bq2419x->vbus_rdev);
        regulator_unregister(bq2419x->chg_rdev);
        mutex_destroy(&bq2419x->mutex);
-       return 0;
 }
 
 static const struct of_device_id bq2419x_of_match[] = {
@@ -919,6 +917,7 @@ static struct i2c_driver bq2419x_i2c_driver = {
                .name   = "bq2419x",
                .owner  = THIS_MODULE,
                .of_match_table = of_match_ptr(bq2419x_of_match),
+			   .probe_type = PROBE_PREFER_ASYNCHRONOUS,
        },
        .probe          = bq2419x_probe,
        .remove         = bq2419x_remove,
